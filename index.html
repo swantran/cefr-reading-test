@@ -1,0 +1,255 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CEFR Reading Test</title>
+    <link href="public/styles.css" rel="stylesheet">
+    <script src="https://unpkg.com/@tensorflow/tfjs"></script>
+    <script src="https://unpkg.com/@tensorflow-models/speech-commands"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-2xl">
+        <h1 class="text-2xl font-bold mb-4 text-center">CEFR Reading Competence Test</h1>
+        <div id="testContainer" class="space-y-4">
+            <p id="instructions" class="text-gray-700">
+                Please read the following text aloud when prompted. Press "Start Recording" to begin.
+            </p>
+            <div id="textDisplay" class="bg-gray-50 p-4 rounded border text-gray-800">
+                The quick brown fox jumps over the lazy dog. This is a sample text for reading.
+            </div>
+            <div class="flex justify-center space-x-4">
+                <button id="startRecording" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Start Recording
+                </button>
+                <button id="stopRecording" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 hidden">
+                    Stop Recording
+                </button>
+            </div>
+            <div id="status" class="text-center text-gray-600"></div>
+            <div id="result" class="text-center text-gray-800 font-semibold hidden"></div>
+        </div>
+    </div>
+
+    <script>
+        // Audio recording setup
+        let mediaRecorder;
+        let audioChunks = [];
+        let audioContext;
+        let analyser;
+        const exemplarText = "The quick brown fox jumps over the lazy dog. This is a sample text for reading.";
+        const exemplarFeatures = { duration: 7.0, phonemeCount: 45 }; // Simplified exemplar data
+
+        function checkBrowserSupport() {
+            if (!window.navigator.mediaDevices || !window.navigator.mediaDevices.getUserMedia) {
+                document.getElementById('status').textContent = 'Error: Your browser does not support microphone access (getUserMedia). Please use a modern browser like Chrome or Firefox.';
+                console.error('Browser does not support getUserMedia');
+                return false;
+            }
+            if (typeof MediaRecorder === 'undefined') {
+                document.getElementById('status').textContent = 'Error: Your browser does not support the MediaRecorder API. Please use a modern browser like Chrome or Firefox.';
+                console.error('Browser does not support MediaRecorder');
+                return false;
+            }
+            if (!MediaRecorder.isTypeSupported('audio/webm')) {
+                document.getElementById('status').textContent = 'Error: Your browser does not support the audio/webm format. Trying fallback format.';
+                console.warn('audio/webm not supported');
+                return false;
+            }
+            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+                document.getElementById('status').textContent = 'Error: Microphone access requires a secure context. Please run this app on localhost or deploy it to a server with HTTPS enabled (e.g., via Netlify or Vercel).';
+                console.error('Secure context required: Current protocol is', window.location.protocol, 'and hostname is', window.location.hostname);
+                return false;
+            }
+            return true;
+        }
+
+async function setupRecording() {
+    if (!checkBrowserSupport()) {
+        resetUI();
+        return;
+    }
+    try {
+        console.log('Requesting microphone access...');
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+            }
+        });
+        console.log('Microphone access granted, initializing MediaRecorder...');
+        let startTime = Date.now(); // Track start time
+        let mimeType = 'audio/webm';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+            console.warn('audio/webm not supported, falling back to audio/mp4');
+            mimeType = 'audio/mp4';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                throw new Error('No supported audio format found');
+            }
+        }
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+        audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        analyser = audioContext.createAnalyser();
+        source.connect(analyser);
+        mediaRecorder.ondataavailable = (event) => {
+            console.log('Recording data received, size:', event.data.size);
+            audioChunks.push(event.data);
+        };
+        mediaRecorder.onstop = async () => {
+            console.log('Recording stopped, processing audio...');
+            const audioBlob = new Blob(audioChunks, { type: mimeType });
+            document.getElementById('status').textContent = 'Processing recording...';
+            let duration = (Date.now() - startTime) / 1000; // Duration in seconds
+            console.log('Calculated Duration:', duration);
+            if (duration <= 0) {
+                console.log('Invalid duration, using fallback of 7 seconds');
+                duration = 7; // Fallback to 7 seconds
+            }
+            const analysis = await analyzeRecording(audioBlob, duration);
+            const grade = assignCEFRGrade(analysis);
+            displayResult(grade, analysis);
+            audioChunks = [];
+            resetUI();
+        };
+        mediaRecorder.onerror = (event) => {
+            console.error('MediaRecorder error:', event.error);
+            document.getElementById('status').textContent = `Error: Recording failed - ${event.error.message}`;
+            resetUI();
+        };
+        console.log('Starting recording...');
+        mediaRecorder.start();
+        document.getElementById('status').textContent = 'Recording...';
+        document.getElementById('startRecording').classList.add('hidden');
+        document.getElementById('stopRecording').classList.remove('hidden');
+    } catch (err) {
+        console.error('Error setting up recording:', err.name, err.message);
+        let errorMessage = 'Error: Unable to access microphone. Please check permissions and ensure a microphone is connected.';
+        if (err.name === 'NotAllowedError') {
+            errorMessage = 'Error: Microphone access was denied. Please allow microphone access in your browser settings.';
+        } else if (err.name === 'NotFoundError') {
+            errorMessage = 'Error: No microphone found. Please connect a microphone and try again.';
+        } else if (err.name === 'NotReadableError') {
+            errorMessage = 'Error: Microphone is already in use by another application.';
+        } else if (err.name === 'SecurityError') {
+            errorMessage = 'Error: Microphone access requires a secure context. Please run this app on localhost or deploy it to a server with HTTPS enabled.';
+        }
+        document.getElementById('status').textContent = errorMessage;
+        resetUI();
+    }
+}
+async function analyzeRecording(audioBlob, duration) {
+    console.log('Analyzing recording, blob size:', audioBlob.size, 'duration:', duration);
+    const fluencyScore = calculateFluency(duration);
+    const phoneticAccuracy = await comparePhonetics(audioBlob);
+    return { fluencyScore, phoneticAccuracy, duration };
+}
+
+        
+
+       function calculateFluency(duration) {
+    const idealDuration = exemplarFeatures?.duration || 7; // Fallback to 7 seconds
+    console.log('Ideal Duration:', idealDuration, 'Recorded Duration:', duration);
+    if (!duration || duration <= 0 || !idealDuration || idealDuration <= 0) {
+        console.log('Invalid duration or idealDuration, returning fallback score');
+        return 0.5; // Fallback score (50%)
+    }
+    const deviation = Math.abs(duration - idealDuration) / idealDuration;
+    const score = Math.max(0, 1 - deviation);
+    console.log('Fluency score calculated:', score, 'duration:', duration);
+    return score;
+}
+        async function comparePhonetics(audioBlob) {
+            // Placeholder for phonetic comparison using TensorFlow.js
+            console.log('Simulating phonetic comparison');
+            return 0.85; // Mock phonetic accuracy score (0-1)
+        }
+
+        function assignCEFRGrade(analysis) {
+            const { fluencyScore, phoneticAccuracy } = analysis;
+            const compositeScore = (fluencyScore * 0.5 + phoneticAccuracy * 0.5) * 100;
+            console.log('CEFR composite score:', compositeScore);
+
+            if (compositeScore >= 90) return 'C2';
+            if (compositeScore >= 80) return 'C1';
+            if (compositeScore >= 70) return 'B2';
+            if (compositeScore >= 60) return 'B1';
+            if (compositeScore >= 40) return 'A2';
+            return 'A1';
+        }
+
+        function displayResult(grade, analysis) {
+            document.getElementById('result').classList.remove('hidden');
+            document.getElementById('result').innerHTML = `
+                CEFR Grade: ${grade}<br>
+                Fluency Score: ${(analysis.fluencyScore * 100).toFixed(1)}%<br>
+                Phonetic Accuracy: ${(analysis.phoneticAccuracy * 100).toFixed(1)}%
+            `;
+            document.getElementById('status').textContent = '';
+            console.log('Result displayed:', grade);
+        }
+
+        function resetUI() {
+            document.getElementById('stopRecording').classList.add('hidden');
+            document.getElementById('startRecording').classList.remove('hidden');
+            console.log('UI reset');
+        }
+
+        // Event listeners
+        document.getElementById('startRecording').addEventListener('click', () => {
+            console.log('Start recording button clicked');
+            setupRecording();
+        });
+
+        document.getElementById('stopRecording').addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                console.log('Stop recording button clicked');
+                mediaRecorder.stop();
+            } else {
+                console.warn('Stop recording clicked but mediaRecorder is not active');
+                resetUI();
+            }
+        });
+    </script>
+</body>
+</html>
