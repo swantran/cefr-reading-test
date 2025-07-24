@@ -7,10 +7,9 @@ const express = require('express');
    app.use(cors());
    app.use(express.json({ limit: '10mb' }));
 
-   const speechClient = new SpeechClient({
-       keyFilename: './cefr-reading-test-123456.json' // Update with your JSON key file name
-   });
-
+  const speechClient = new SpeechClient({
+    credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS || JSON.stringify(require('./cefr-reading-test-123456.json')))
+});
    app.post('/transcribe', async (req, res) => {
        try {
            const audioBase64 = req.body.audio;
