@@ -1,17 +1,19 @@
 {
-  "name": "cefr-reading-test",
-  "version": "1.0.0",
-  "description": "CEFR Reading Test Backend",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": "16.x"
-  },
-  "dependencies": {
-    "@google-cloud/speech": "^5.6.0",
-    "cors": "^2.8.5",
-    "express": "^4.21.2"
-  }
+ "name": "cefr-reading-test-frontend",
+ "version": "1.0.0",
+ "description": "CEFR Reading Test Frontend",
+ "scripts": {
+  "start": "serve -s -p 3000"
+ },
+ "engines": {
+  "node": "16.x"
+ },
+ "dependencies": {
+  "@google-cloud/speech": "^5.6.0",
+  "cors": "^2.8.5",
+  "express": "^4.21.2"
+ },
+ "devDependencies": {
+  "serve": "^14.2.4"
+ }
 }
