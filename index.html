@@ -96,7 +96,33 @@
                console.log('Fluency score calculated:', score, 'duration:', duration, 'deviation:', deviation);
                return score;
            }
-
+async function comparePhonetics(audioBlob, selectedSentenceIndex) {
+    try {
+        const reader = new FileReader();
+        return new Promise((resolve) => {
+            reader.onload = async () => {
+                const audioBase64 = reader.result;
+                const expectedText = exemplarFeaturesList[selectedSentenceIndex].text;
+                const response = await fetch('http://localhost:3001/transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ audio: audioBase64, text: expectedText })
+                });
+                const result = await response.json();
+                if (result.error) {
+                    console.error('Transcription error:', result.error);
+                    return resolve(0.85);
+                }
+                console.log('Transcription:', result.transcription, 'Accuracy:', result.accuracy, 'Confidence:', result.confidence);
+                return resolve(result.accuracy * result.confidence);
+            };
+            reader.readAsDataURL(audioBlob);
+        });
+    } catch (error) {
+        console.error('Error in comparePhonetics:', error);
+        return 0.85;
+    }
+}
            async function comparePhonetics(audioBlob, selectedSentenceIndex) {
                if (!SpeechRecognition) return 0.85; // Fallback if API unavailable
                return new Promise((resolve) => {
