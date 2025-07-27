@@ -522,7 +522,7 @@ class CEFRReadingTest {
                 analysisData = await this.apiClient.transcribeAudio(base64Audio, sentence.text);
             } catch (error) {
                 console.warn('API analysis failed, using offline mode:', error);
-                analysisData = this.apiClient.getMockAnalysis(duration, sentence.idealDuration);
+                analysisData = this.apiClient.getMockAnalysis(duration, sentence.idealDuration, sentence.text);
                 this.showNotification('Using offline analysis due to connection issues', 'warning');
             }
 
