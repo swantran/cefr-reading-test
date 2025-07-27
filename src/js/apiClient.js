@@ -61,12 +61,20 @@ export class APIClient {
 
     async checkHealth() {
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
             const response = await fetch(`${this.baseURL}/health`, {
                 method: 'GET',
-                timeout: 5000
+                signal: controller.signal,
+                mode: 'cors'
             });
+            
+            clearTimeout(timeoutId);
             return response.ok;
         } catch (error) {
+            // Expected to fail due to CORS/offline - this is normal for the app
+            console.log('Health check failed (expected for offline app):', error.name);
             return false;
         }
     }

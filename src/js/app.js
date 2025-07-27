@@ -31,15 +31,18 @@ class CEFRReadingTest {
             this.renderHistory();
             this.updateUI();
             
-            // Check API health (non-blocking)
+            // Check API health once (non-blocking)
+            console.log('Checking API health once...');
             this.apiClient.checkHealth()
                 .then(isAPIOnline => {
+                    console.log('API health check result:', isAPIOnline);
                     if (!isAPIOnline) {
-                        this.showNotification('API is offline. Using local analysis.', 'warning');
+                        console.log('API is offline, using local analysis');
+                        this.showNotification('Working in offline mode', 'info');
                     }
                 })
                 .catch(error => {
-                    console.log('API health check failed (expected):', error);
+                    console.log('API health check failed (expected for offline app):', error.message);
                     this.showNotification('Working in offline mode', 'info');
                 });
             
@@ -52,46 +55,60 @@ class CEFRReadingTest {
     }
 
     setupEventListeners() {
-        // Level selection - delegate from document
+        console.log('Setting up event listeners...');
+        
+        // Use a simpler approach - delegate from document with better logic
         document.addEventListener('click', (e) => {
             console.log('Click detected on:', e.target.id, e.target.className, e.target.tagName);
             
+            // Level selection
             if (e.target.closest('.level-card')) {
                 const level = e.target.closest('.level-card').dataset.level;
                 console.log('Level card clicked:', level);
                 this.selectLevel(level);
+                return;
             }
             
-            // Recording controls - delegate from document
-            if (e.target.id === 'startBtn' || e.target.closest('#startBtn')) {
+            // Check if click is on Start Recording button or its contents
+            const startBtn = e.target.closest('#startBtn');
+            if (startBtn) {
                 console.log('Start button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
                 this.startRecording();
                 return;
             }
-            if (e.target.id === 'stopBtn' || e.target.closest('#stopBtn')) {
+            
+            // Check other buttons using the same pattern
+            const stopBtn = e.target.closest('#stopBtn');
+            if (stopBtn) {
                 console.log('Stop button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
                 this.stopRecording();
                 return;
             }
-            if (e.target.id === 'retryBtn' || e.target.closest('#retryBtn')) {
+            
+            const retryBtn = e.target.closest('#retryBtn');
+            if (retryBtn) {
                 console.log('Retry button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
                 this.retryCurrentSentence();
                 return;
             }
-            if (e.target.id === 'nextBtn' || e.target.closest('#nextBtn')) {
+            
+            const nextBtn = e.target.closest('#nextBtn');
+            if (nextBtn) {
                 console.log('Next button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
                 this.nextSentence();
                 return;
             }
-            if (e.target.id === 'playAudioBtn' || e.target.closest('#playAudioBtn')) {
+            
+            const playAudioBtn = e.target.closest('#playAudioBtn');
+            if (playAudioBtn) {
                 console.log('Play audio button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
@@ -105,19 +122,27 @@ class CEFRReadingTest {
             document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
         }
 
-        // Settings and other controls - delegate from document
+        // Settings and other controls - using the same pattern
         document.addEventListener('click', (e) => {
-            if (e.target.id === 'exportBtn' || e.target.closest('#exportBtn')) {
+            const exportBtn = e.target.closest('#exportBtn');
+            if (exportBtn) {
                 e.preventDefault();
                 this.exportResults();
+                return;
             }
-            if (e.target.id === 'clearHistoryBtn' || e.target.closest('#clearHistoryBtn')) {
+            
+            const clearHistoryBtn = e.target.closest('#clearHistoryBtn');
+            if (clearHistoryBtn) {
                 e.preventDefault();
                 this.clearHistory();
+                return;
             }
-            if (e.target.id === 'themeToggle' || e.target.closest('#themeToggle')) {
+            
+            const themeToggle = e.target.closest('#themeToggle');
+            if (themeToggle) {
                 e.preventDefault();
                 this.toggleTheme();
+                return;
             }
         });
 
@@ -147,6 +172,8 @@ class CEFRReadingTest {
                 this.updateSettings();
             }
         });
+
+        console.log('Event listeners set up');
     }
 
     renderLevelSelector() {
@@ -174,7 +201,10 @@ class CEFRReadingTest {
 
     renderTestArea() {
         const container = document.getElementById('testArea');
-        if (!container) return;
+        if (!container) {
+            console.error('testArea container not found!');
+            return;
+        }
 
         const levelData = CEFR_LEVELS[this.currentLevel];
         const sentence = levelData.sentences[this.currentSentenceIndex];
@@ -239,8 +269,6 @@ class CEFRReadingTest {
         `;
 
         container.innerHTML = html;
-        
-        // Ensure event listeners work
         console.log('Test area rendered, buttons should be clickable');
         this.updateUI();
     }
@@ -451,7 +479,12 @@ class CEFRReadingTest {
     }
 
     async stopRecording() {
-        if (!this.isRecording) return;
+        console.log('Stop recording called, isRecording:', this.isRecording);
+        
+        if (!this.isRecording) {
+            console.log('Not recording, ignoring stop request');
+            return;
+        }
 
         try {
             this.audioRecorder.stopRecording();
@@ -464,6 +497,12 @@ class CEFRReadingTest {
             
             // Get recorded audio data
             const audioData = this.audioRecorder.getRecordedAudio();
+            console.log('Audio data:', audioData);
+            
+            if (!audioData || !audioData.duration) {
+                throw new Error('No audio data available or invalid recording');
+            }
+            
             const duration = audioData.duration;
             
             // Show audio playback if enabled
@@ -618,9 +657,12 @@ class CEFRReadingTest {
         switch (event.code) {
             case 'Space':
                 event.preventDefault();
+                console.log('Spacebar pressed for recording, isRecording:', this.isRecording);
                 if (this.isRecording) {
+                    console.log('Stopping recording via spacebar');
                     this.stopRecording();
                 } else {
+                    console.log('Starting recording via spacebar');
                     this.startRecording();
                 }
                 break;
@@ -812,6 +854,7 @@ class CEFRReadingTest {
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM Content Loaded, initializing CEFR app...');
     window.cefrApp = new CEFRReadingTest();
 });
 
