@@ -1,19 +1,51 @@
 {
- "name": "cefr-reading-test-frontend",
- "version": "1.0.0",
- "description": "CEFR Reading Test Frontend",
- "scripts": {
-  "start": "serve -s -p 3000"
- },
- "engines": {
-  "node": "16.x"
- },
- "dependencies": {
-  "@google-cloud/speech": "^5.6.0",
-  "cors": "^2.8.5",
-  "express": "^4.21.2"
- },
- "devDependencies": {
-  "serve": "^14.2.4"
- }
+  "name": "cefr-reading-test",
+  "version": "2.0.0",
+  "description": "CEFR Reading Test - AI-powered pronunciation assessment tool with offline support",
+  "main": "index.html",
+  "scripts": {
+    "start": "serve -s -p 3000",
+    "dev": "serve -s -p 3000 --watch",
+    "build": "echo 'No build step required for static site'",
+    "test": "echo 'No tests specified yet'",
+    "lint": "echo 'No linting configured yet'",
+    "deploy": "echo 'Deployment script not configured'"
+  },
+  "keywords": [
+    "CEFR",
+    "pronunciation",
+    "speech-recognition",
+    "language-learning",
+    "english",
+    "assessment",
+    "education",
+    "pwa",
+    "offline"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.x"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "serve": "^14.2.4"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead",
+    "not ie 11"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/cefr-reading-test.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/cefr-reading-test/issues"
+  },
+  "homepage": "https://yourusername.github.io/cefr-reading-test"
 }

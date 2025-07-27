@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Test</title>
+    <style>
+        .btn { padding: 10px 20px; margin: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .btn:disabled { background: #ccc; }
+    </style>
+</head>
+<body>
+    <div id="testArea">
+        <button type="button" class="btn" id="startBtn">🎤 Start Recording</button>
+        <button type="button" class="btn" id="stopBtn" disabled>⏹ Stop Recording</button>
+    </div>
+
+    <script type="module">
+        console.log('Simple test script loaded');
+        
+        // Test direct event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM loaded');
+            
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            if (startBtn) {
+                console.log('Start button found');
+                startBtn.addEventListener('click', () => {
+                    console.log('Start button clicked directly!');
+                    alert('Start button works!');
+                });
+            }
+            
+            if (stopBtn) {
+                console.log('Stop button found');
+                stopBtn.addEventListener('click', () => {
+                    console.log('Stop button clicked directly!');
+                    alert('Stop button works!');
+                });
+            }
+            
+            // Test delegation
+            document.addEventListener('click', (e) => {
+                console.log('Document click:', e.target.id, e.target.tagName);
+                if (e.target.id === 'startBtn') {
+                    console.log('Start button via delegation!');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
