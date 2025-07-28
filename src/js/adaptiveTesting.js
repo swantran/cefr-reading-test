@@ -380,7 +380,13 @@ export class AdaptiveTestingEngine {
     }
 
     hasCompletedPlacement() {
-        return this.currentAssessment && this.currentAssessment.placementComplete;
+        const result = this.currentAssessment && this.currentAssessment.placementComplete;
+        console.log('hasCompletedPlacement check:', {
+            currentAssessment: this.currentAssessment,
+            placementComplete: this.currentAssessment?.placementComplete,
+            result
+        });
+        return result;
     }
 
     getAssignedLevel() {

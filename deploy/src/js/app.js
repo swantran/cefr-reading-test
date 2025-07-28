@@ -270,10 +270,14 @@ class CEFRReadingTest {
     }
 
     renderTestView() {
+        console.log('renderTestView - placementCompleted:', this.placementCompleted);
+        
         // Show different UI based on placement completion
         if (this.placementCompleted) {
+            console.log('Showing post-placement view (level selector)');
             this.renderPostPlacementView();
         } else {
+            console.log('Showing placement test view (hiding level selector)');
             this.renderPlacementTestView();
         }
         
