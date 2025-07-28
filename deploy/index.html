@@ -40,27 +40,28 @@
     <a href="#main-content" class="sr-only">Skip to main content</a>
     
     <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <h1>CEFR Reading Test</h1>
-            <p>Improve your English pronunciation with AI-powered feedback</p>
-            
-            <!-- Theme toggle and settings -->
-            <div style="margin-top: 1rem;">
-                <button id="themeToggle" class="btn btn-secondary" aria-label="Toggle dark mode">
-                    <span id="themeIcon">🌙</span>
-                </button>
-                <button id="settingsBtn" class="btn btn-secondary" aria-label="Open settings">
-                    <span>⚙️</span>
-                </button>
-            </div>
+        <!-- Navigation -->
+        <header id="navigation" class="navigation">
+            <!-- Navigation content will be populated by JavaScript -->
         </header>
 
         <!-- Main content -->
         <main id="main-content">
+            <!-- Placement Test Info -->
+            <section class="placement-info" id="placementInfo" aria-labelledby="placement-heading" style="display: none;">
+                <h2 id="placement-heading" class="sr-only">CEFR Placement Test Information</h2>
+                <!-- Content will be populated by JavaScript -->
+            </section>
+
             <!-- Level selector -->
             <section class="level-selector" id="levelSelector" aria-labelledby="level-heading">
                 <h2 id="level-heading" class="sr-only">Choose Your CEFR Level</h2>
+                <!-- Content will be populated by JavaScript -->
+            </section>
+
+            <!-- Placement Complete -->
+            <section class="placement-complete" id="placementComplete" aria-labelledby="placement-complete-heading" style="display: none;">
+                <h2 id="placement-complete-heading" class="sr-only">Placement Test Complete</h2>
                 <!-- Content will be populated by JavaScript -->
             </section>
 
@@ -74,6 +75,12 @@
             <section class="results" id="results" aria-labelledby="results-heading" role="region" aria-live="polite">
                 <h2 id="results-heading" class="sr-only">Test Results</h2>
                 <!-- Content will be populated by JavaScript -->
+            </section>
+
+            <!-- Analytics Dashboard -->
+            <section class="analytics-container" id="analyticsContainer" aria-labelledby="analytics-heading" style="display: none;">
+                <h2 id="analytics-heading" class="sr-only">Learning Analytics Dashboard</h2>
+                <!-- Analytics content will be populated by JavaScript -->
             </section>
 
             <!-- Custom text upload -->
