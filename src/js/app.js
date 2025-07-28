@@ -4,6 +4,11 @@ import { APIClient } from './apiClient.js';
 import { ScoringEngine } from './scoring.js';
 import { StorageManager } from './storage.js';
 import { CEFR_LEVELS } from './cefrData.js';
+import { AnalyticsEngine } from './analytics.js';
+import { AnalyticsDashboard } from './analyticsUI.js';
+import { AdaptiveTestingEngine } from './adaptiveTesting.js';
+import { ExemplarAudioManager } from './exemplarAudio.js';
+import { PhoneticAnalysisEngine } from './phoneticAnalysis.js';
 
 class CEFRReadingTest {
     constructor() {
@@ -11,6 +16,11 @@ class CEFRReadingTest {
         this.apiClient = new APIClient();
         this.scoringEngine = new ScoringEngine();
         this.storage = new StorageManager();
+        this.analytics = new AnalyticsEngine(this.storage);
+        this.analyticsDashboard = null;
+        this.adaptiveTesting = new AdaptiveTestingEngine(this.storage);
+        this.exemplarAudio = new ExemplarAudioManager();
+        this.phoneticAnalysis = new PhoneticAnalysisEngine();
         
         this.currentLevel = 'A1';
         this.currentSentenceIndex = 0;
@@ -19,6 +29,9 @@ class CEFRReadingTest {
         this.recordingStartTime = null;
         this.isInitialized = false;
         this.settings = this.storage.getSettings();
+        this.currentView = 'test'; // 'test' or 'analytics'
+        this.testMode = 'placement'; // 'placement' or 'practice'
+        this.placementCompleted = this.adaptiveTesting.hasCompletedPlacement();
         
         this.initializeApp();
     }
@@ -26,10 +39,21 @@ class CEFRReadingTest {
     async initializeApp() {
         try {
             await this.setupEventListeners();
-            this.renderLevelSelector();
-            this.renderTestArea();
-            this.renderHistory();
+            this.renderNavigation();
+            this.renderMainContent();
             this.updateUI();
+            
+            // Initialize analytics dashboard
+            const analyticsContainer = document.getElementById('analyticsContainer');
+            if (analyticsContainer) {
+                this.analyticsDashboard = new AnalyticsDashboard(this.analytics, analyticsContainer);
+            }
+            
+            // Preload exemplar audio for current level (non-blocking)
+            if (this.currentLevel) {
+                this.exemplarAudio.preloadExemplarsForLevel(this.currentLevel)
+                    .catch(error => console.log('Non-critical: exemplar preload failed', error));
+            }
             
             // Check API health once (non-blocking)
             console.log('Checking API health once...');
@@ -115,6 +139,25 @@ class CEFRReadingTest {
                 this.playRecordedAudio();
                 return;
             }
+            
+            // Exemplar audio controls
+            const playExemplarBtn = e.target.closest('#playExemplarBtn');
+            if (playExemplarBtn) {
+                console.log('Play exemplar button clicked!');
+                e.preventDefault();
+                e.stopPropagation();
+                this.playExemplarAudio();
+                return;
+            }
+            
+            const compareBtn = e.target.closest('#compareBtn');
+            if (compareBtn) {
+                console.log('Compare button clicked!');
+                e.preventDefault();
+                e.stopPropagation();
+                this.compareWithExemplar();
+                return;
+            }
         });
 
         // Keyboard shortcuts
@@ -144,6 +187,20 @@ class CEFRReadingTest {
                 this.toggleTheme();
                 return;
             }
+            
+            // Navigation buttons
+            const navBtn = e.target.closest('.nav-btn');
+            if (navBtn) {
+                e.preventDefault();
+                const view = navBtn.dataset.view;
+                this.switchView(view);
+                return;
+            }
+        });
+
+        // Analytics action events
+        document.addEventListener('analyticsAction', (e) => {
+            this.handleAnalyticsAction(e.detail.action);
         });
 
         // Custom text upload - delegate from document
@@ -176,23 +233,201 @@ class CEFRReadingTest {
         console.log('Event listeners set up');
     }
 
+    renderNavigation() {
+        const container = document.getElementById('navigation');
+        if (!container) return;
+
+        const html = `
+            <nav class="main-nav">
+                <div class="nav-brand">
+                    <h1>📚 CEFR Reading Test</h1>
+                </div>
+                <div class="nav-menu">
+                    <button class="nav-btn ${this.currentView === 'test' ? 'active' : ''}" data-view="test">
+                        <span>🎤</span> Practice Test
+                    </button>
+                    <button class="nav-btn ${this.currentView === 'analytics' ? 'active' : ''}" data-view="analytics">
+                        <span>📊</span> Analytics
+                    </button>
+                </div>
+                <div class="nav-actions">
+                    <button id="themeToggle" class="nav-action-btn" title="Toggle theme">
+                        <span>🌙</span>
+                    </button>
+                </div>
+            </nav>
+        `;
+        
+        container.innerHTML = html;
+    }
+
+    renderMainContent() {
+        if (this.currentView === 'test') {
+            this.renderTestView();
+        } else if (this.currentView === 'analytics') {
+            this.renderAnalyticsView();
+        }
+    }
+
+    renderTestView() {
+        // Show different UI based on placement completion
+        if (this.placementCompleted) {
+            this.renderPostPlacementView();
+        } else {
+            this.renderPlacementTestView();
+        }
+        
+        this.renderTestArea();
+        this.renderHistory();
+    }
+
+    renderPlacementTestView() {
+        // Hide level selector during placement test
+        this.hideElement('levelSelector');
+        
+        // Show placement test info
+        this.showElement('placementInfo');
+        this.renderPlacementInfo();
+        
+        this.showElement('testArea');
+        this.showElement('results');
+        this.showElement('historySection');
+        this.hideElement('analyticsContainer');
+    }
+
+    renderPostPlacementView() {
+        // Show level selector for practice mode
+        this.showElement('levelSelector');
+        this.renderLevelSelector();
+        
+        // Hide placement info
+        this.hideElement('placementInfo');
+        
+        this.showElement('testArea');
+        this.showElement('results');
+        this.showElement('historySection');
+        this.hideElement('analyticsContainer');
+    }
+
+
+    renderAnalyticsView() {
+        // Hide test containers and show analytics
+        this.hideElement('levelSelector');
+        this.hideElement('testArea');
+        this.hideElement('results');
+        this.hideElement('historySection');
+        this.showElement('analyticsContainer');
+        
+        // Render analytics dashboard
+        if (this.analyticsDashboard) {
+            this.analyticsDashboard.render();
+        }
+    }
+
+    switchView(view) {
+        if (this.isRecording) {
+            this.showNotification('Please stop recording before switching views', 'warning');
+            return;
+        }
+        
+        this.currentView = view;
+        this.renderNavigation();
+        this.renderMainContent();
+        
+        // Update URL without page reload
+        history.pushState({ view }, '', `?view=${view}`);
+    }
+
+    handleAnalyticsAction(action) {
+        switch (action) {
+            case 'Take a practice test now':
+            case 'Begin assessment':
+                this.switchView('test');
+                break;
+            case 'Focus on pronunciation exercises':
+            case 'Focus on fluency exercises':
+            case 'Focus on completeness exercises':
+            case 'Focus on clarity exercises':
+                this.switchView('test');
+                this.showNotification(`Switched to practice mode. Focus on ${action.split(' ')[2]} during your next test.`, 'info');
+                break;
+            default:
+                console.log('Unhandled analytics action:', action);
+        }
+    }
+
+    showElement(id) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.style.display = '';
+        }
+    }
+
+    hideElement(id) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.style.display = 'none';
+        }
+    }
+
     renderLevelSelector() {
         const container = document.getElementById('levelSelector');
         if (!container) return;
 
+        const assignedLevel = this.adaptiveTesting.getAssignedLevel();
         const html = `
-            <h3>Choose Your Level</h3>
-            <div class="level-grid">
-                ${Object.entries(CEFR_LEVELS).map(([level, data]) => `
-                    <div class="level-card ${level === this.currentLevel ? 'active' : ''}" 
-                         data-level="${level}" 
-                         tabindex="0"
-                         role="button"
-                         aria-pressed="${level === this.currentLevel}">
-                        <h4>${level} - ${data.name}</h4>
-                        <p>${data.description}</p>
+            <div class="level-selector-content">
+                <div class="placement-results">
+                    <h3>📊 Your CEFR Level: <span class="assigned-level">${assignedLevel}</span></h3>
+                    <p>Based on your placement test, you've been assigned to ${assignedLevel} level. You can now practice at any level or continue with recommended content.</p>
+                </div>
+                
+                <h4>Practice Mode - Choose Your Level</h4>
+                <div class="level-grid">
+                    ${Object.entries(CEFR_LEVELS).map(([level, data]) => `
+                        <div class="level-card ${level === this.currentLevel ? 'active' : ''} ${level === assignedLevel ? 'recommended' : ''}" 
+                             data-level="${level}" 
+                             tabindex="0"
+                             role="button"
+                             aria-pressed="${level === this.currentLevel}">
+                            <h4>${level} - ${data.name} ${level === assignedLevel ? '⭐' : ''}</h4>
+                            <p>${data.description}</p>
+                            ${level === assignedLevel ? '<span class="recommended-badge">Recommended</span>' : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+    }
+
+    renderPlacementInfo() {
+        const container = document.getElementById('placementInfo');
+        if (!container) return;
+
+        const testInfo = this.adaptiveTesting.getCurrentTestInfo();
+        if (!testInfo) return;
+
+        const html = `
+            <div class="placement-test-info">
+                <div class="placement-header">
+                    <h3>🎯 CEFR Placement Test</h3>
+                    <div class="test-status">
+                        <span class="current-level">Current Level: ${testInfo.level}</span>
+                        <span class="progress-info">${testInfo.progress.levelProgress}</span>
                     </div>
-                `).join('')}
+                </div>
+                
+                <div class="placement-instructions">
+                    <p>We're determining your English proficiency level. Read each sentence clearly and naturally. The test will automatically progress based on your performance.</p>
+                    
+                    <div class="progress-indicators">
+                        <div class="level-progress">
+                            <span>📈 ${testInfo.progress.averageAtLevel}% average at ${testInfo.level}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
         
@@ -206,9 +441,32 @@ class CEFRReadingTest {
             return;
         }
 
-        const levelData = CEFR_LEVELS[this.currentLevel];
-        const sentence = levelData.sentences[this.currentSentenceIndex];
-        const progress = ((this.currentSentenceIndex + 1) / levelData.sentences.length) * 100;
+        // Get current test info from adaptive testing or use manual selection
+        let testInfo, levelData, sentence, progress;
+        
+        if (!this.placementCompleted || this.testMode === 'placement') {
+            testInfo = this.adaptiveTesting.getCurrentTestInfo();
+            if (testInfo) {
+                this.currentLevel = testInfo.level;
+                this.currentSentenceIndex = testInfo.sentenceIndex;
+                levelData = CEFR_LEVELS[testInfo.level];
+                sentence = testInfo.sentence;
+                progress = ((testInfo.sentenceIndex + 1) / levelData.sentences.length) * 100;
+            } else {
+                // Start placement test
+                const placementStart = this.adaptiveTesting.startPlacementTest();
+                this.currentLevel = placementStart.level;
+                this.currentSentenceIndex = placementStart.sentenceIndex;
+                levelData = CEFR_LEVELS[this.currentLevel];
+                sentence = levelData.sentences[this.currentSentenceIndex];
+                progress = ((this.currentSentenceIndex + 1) / levelData.sentences.length) * 100;
+            }
+        } else {
+            // Practice mode - use manual selection
+            levelData = CEFR_LEVELS[this.currentLevel];
+            sentence = levelData.sentences[this.currentSentenceIndex];
+            progress = ((this.currentSentenceIndex + 1) / levelData.sentences.length) * 100;
+        }
 
         const html = `
             <div class="progress-bar">
@@ -218,8 +476,10 @@ class CEFRReadingTest {
             <div class="sentence-display" id="sentenceDisplay" role="main" aria-live="polite">
                 <p class="sentence-text" id="sentenceText">${sentence.text}</p>
                 <div class="sentence-info">
-                    ${this.currentSentenceIndex + 1} / ${levelData.sentences.length}
-                    ${this.settings.showTimer ? `• ~${sentence.idealDuration}s` : ''}
+                    <span class="level-indicator">${this.currentLevel} Level</span>
+                    <span class="sentence-progress">${this.currentSentenceIndex + 1} / ${levelData.sentences.length}</span>
+                    ${this.settings.showTimer ? `<span class="duration-hint">~${sentence.idealDuration}s</span>` : ''}
+                    ${!this.placementCompleted ? '<span class="placement-badge">📍 Placement Test</span>' : ''}
                 </div>
             </div>
 
@@ -233,6 +493,26 @@ class CEFRReadingTest {
                     <span id="timerDisplay">00:00</span>
                 </div>
             ` : ''}
+
+            <!-- Exemplar Audio Controls -->
+            <div class="exemplar-controls" id="exemplarControls">
+                <div class="exemplar-header">
+                    <h4>📖 Listen to Perfect Pronunciation</h4>
+                    <p>Hear how this sentence should be pronounced by a native speaker</p>
+                </div>
+                <div class="exemplar-actions">
+                    <button type="button" class="btn btn-secondary" id="playExemplarBtn">
+                        <span>🔊</span> Play Exemplar
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="compareBtn" style="display: none;">
+                        <span>⚖️</span> Compare with My Recording
+                    </button>
+                    <div class="exemplar-info" id="exemplarInfo" style="display: none;">
+                        <span class="voice-info"></span>
+                        <span class="quality-badge"></span>
+                    </div>
+                </div>
+            </div>
 
             <div class="controls">
                 <button type="button" class="btn" id="startBtn" aria-describedby="startBtnDesc">
@@ -316,6 +596,8 @@ class CEFRReadingTest {
                 </ul>
             </div>
 
+            ${analysisData.phoneticAnalysis ? this.renderPhoneticAnalysisResults(analysisData.phoneticAnalysis) : ''}
+
             ${analysisData.isOffline ? `
                 <div class="feedback">
                     <h4>⚠️ Offline Mode</h4>
@@ -349,6 +631,13 @@ class CEFRReadingTest {
 
         this.storage.saveTestResult(testResult);
         this.updateProgressDisplay();
+        
+        // Update analytics dashboard if visible
+        if (this.currentView === 'analytics' && this.analyticsDashboard) {
+            setTimeout(() => {
+                this.analyticsDashboard.render();
+            }, 100);
+        }
     }
 
     renderHistory() {
@@ -426,11 +715,25 @@ class CEFRReadingTest {
             return;
         }
 
+        // Only allow manual level selection in practice mode
+        if (!this.placementCompleted) {
+            this.showNotification('Please complete the placement test first', 'info');
+            return;
+        }
+
         this.currentLevel = level;
         this.currentSentenceIndex = 0;
+        this.testMode = 'practice';
+        
         this.renderLevelSelector();
         this.renderTestArea();
         this.hideResults();
+        
+        // Preload exemplar audio for new level (non-blocking)
+        if (level !== 'CUSTOM') {
+            this.exemplarAudio.preloadExemplarsForLevel(level)
+                .catch(error => console.log('Non-critical: exemplar preload failed', error));
+        }
         
         // Update URL without page reload
         history.pushState({ level }, '', `?level=${level}`);
@@ -526,9 +829,35 @@ class CEFRReadingTest {
                 this.showNotification('Using offline analysis due to connection issues', 'warning');
             }
 
-            // Show results
-            this.renderResults(analysisData, duration, sentence);
-            this.announceToScreenReader(`Analysis complete. Your grade is ${analysisData.grade || 'calculated'}`);
+            // Perform advanced phonetic analysis
+            let phoneticAnalysisData = null;
+            try {
+                console.log('Running phonetic analysis...');
+                phoneticAnalysisData = await this.phoneticAnalysis.analyzePhonetics(
+                    audioData.blob, 
+                    sentence.text, 
+                    this.currentLevel
+                );
+                console.log('Phonetic analysis complete:', phoneticAnalysisData);
+            } catch (error) {
+                console.warn('Phonetic analysis failed:', error);
+            }
+
+            // Enhance analysis data with phonetic insights
+            if (phoneticAnalysisData) {
+                analysisData.phoneticAnalysis = phoneticAnalysisData;
+                analysisData.detailedFeedback = phoneticAnalysisData.feedback;
+                analysisData.pronunciationScore = phoneticAnalysisData.overall;
+            }
+
+            // Process results through adaptive testing if in placement mode
+            if (!this.placementCompleted) {
+                this.processPlacementResult(analysisData, duration, sentence);
+            } else {
+                // Show normal results for practice mode
+                this.renderResults(analysisData, duration, sentence);
+                this.announceToScreenReader(`Analysis complete. Your grade is ${analysisData.grade || 'calculated'}`);
+            }
             
         } catch (error) {
             console.error('Analysis failed:', error);
@@ -536,6 +865,193 @@ class CEFRReadingTest {
         } finally {
             this.showLoading(false);
         }
+    }
+
+    processPlacementResult(analysisData, duration, sentence) {
+        const scores = this.scoringEngine.calculateScore(analysisData, duration, sentence.idealDuration);
+        
+        const testResult = {
+            level: this.currentLevel,
+            sentence: sentence.text,
+            scores,
+            grade: scores.grade,
+            duration,
+            idealDuration: sentence.idealDuration,
+            isOffline: analysisData.isOffline || false
+        };
+
+        // Save to history
+        this.storage.saveTestResult(testResult);
+
+        // Process through adaptive testing engine
+        const decision = this.adaptiveTesting.processTestResult(testResult);
+        
+        // Render placement results with progression info
+        this.renderPlacementResults(testResult, decision);
+        
+        // Check if placement test is complete
+        if (decision.action === 'complete_assessment') {
+            this.placementCompleted = true;
+            setTimeout(() => {
+                this.showPlacementComplete(decision);
+            }, 2000);
+        }
+        
+        this.announceToScreenReader(`Score: ${scores.composite}%. ${decision.feedback}`);
+    }
+
+    renderPlacementResults(result, decision) {
+        const container = document.getElementById('results');
+        if (!container) return;
+
+        const gradeInfo = this.scoringEngine.getGradeInfo(result.scores.grade);
+        
+        const html = `
+            <div class="placement-results">
+                <div class="score-summary">
+                    <div class="grade-display">
+                        <div class="grade-badge" style="background-color: ${gradeInfo.color}">
+                            ${result.scores.grade}
+                        </div>
+                        <div class="score-value">${result.scores.composite}%</div>
+                    </div>
+                </div>
+
+                <div class="progression-info">
+                    <h4>📊 ${decision.action === 'advance_level' ? 'Level Up!' : decision.action === 'complete_assessment' ? 'Assessment Complete!' : 'Continue Practice'}</h4>
+                    <p class="feedback-message">${decision.feedback}</p>
+                    
+                    ${decision.action === 'advance_level' ? `
+                        <div class="level-progression">
+                            <span class="from-level">${decision.currentLevel}</span>
+                            <span class="arrow">→</span>
+                            <span class="to-level">${decision.nextLevel}</span>
+                        </div>
+                    ` : ''}
+                    
+                    ${decision.progress ? `
+                        <div class="progress-stats">
+                            <span>Attempts at ${decision.currentLevel}: ${decision.progress.attemptsAtLevel}</span>
+                            <span>Average: ${decision.progress.averageScore}%</span>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <div class="controls">
+                    ${decision.action === 'complete_assessment' ? `
+                        <button class="btn btn-success" id="viewPlacementSummary">
+                            <span>📊</span> View Complete Results
+                        </button>
+                    ` : `
+                        <button class="btn btn-success" id="continueBtn">
+                            <span>➡️</span> Continue Assessment
+                        </button>
+                    `}
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = html;
+        container.classList.add('show');
+        
+        // Update placement info for next test
+        if (decision.action !== 'complete_assessment') {
+            setTimeout(() => {
+                this.renderPlacementInfo();
+                this.renderTestArea();
+            }, 1000);
+        }
+    }
+
+    showPlacementComplete(decision) {
+        const summary = this.adaptiveTesting.getAssessmentSummary();
+        
+        const html = `
+            <div class="placement-complete-modal">
+                <div class="modal-content">
+                    <div class="placement-header">
+                        <h2>🎉 CEFR Placement Test Complete!</h2>
+                        <div class="assigned-level-display">
+                            <span class="level-label">Your CEFR Level:</span>
+                            <span class="assigned-level">${summary.assignedLevel}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="placement-summary">
+                        <div class="summary-stats">
+                            <div class="stat">
+                                <span class="stat-value">${summary.totalAttempts}</span>
+                                <span class="stat-label">Total Attempts</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-value">${Math.round(summary.duration / 60000)}m</span>
+                                <span class="stat-label">Duration</span>
+                            </div>
+                        </div>
+                        
+                        <div class="level-performance">
+                            <h4>Performance by Level</h4>
+                            ${Object.entries(summary.levelPerformance).map(([level, perf]) => `
+                                <div class="level-perf-item">
+                                    <span class="level">${level}</span>
+                                    <span class="attempts">${perf.attempts} attempts</span>
+                                    <span class="average">${perf.averageScore}% avg</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div class="recommendations">
+                            <h4>Recommendations</h4>
+                            ${summary.recommendations.map(rec => `
+                                <p class="recommendation">• ${rec.message}</p>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button class="btn btn-primary" id="startPracticeMode">
+                            <span>🎯</span> Start Practice Mode
+                        </button>
+                        <button class="btn btn-secondary" id="viewAnalytics">
+                            <span>📊</span> View Analytics
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'placement-modal-overlay';
+        overlay.innerHTML = html;
+        document.body.appendChild(overlay);
+        
+        // Add event listeners
+        overlay.querySelector('#startPracticeMode').addEventListener('click', () => {
+            this.startPracticeMode();
+            document.body.removeChild(overlay);
+        });
+        
+        overlay.querySelector('#viewAnalytics').addEventListener('click', () => {
+            this.switchView('analytics');
+            document.body.removeChild(overlay);
+        });
+    }
+
+    startPracticeMode() {
+        this.testMode = 'practice';
+        this.placementCompleted = true;
+        
+        // Set to assigned level
+        const assignedLevel = this.adaptiveTesting.getAssignedLevel();
+        this.currentLevel = assignedLevel;
+        this.currentSentenceIndex = 0;
+        
+        // Re-render the interface
+        this.renderMainContent();
+        this.hideResults();
+        
+        this.showNotification(`Practice mode activated! Starting at your assigned ${assignedLevel} level.`, 'success');
     }
 
     retryCurrentSentence() {
@@ -622,6 +1138,163 @@ class CEFRReadingTest {
         if (audioPlayer && audioPlayer.src) {
             audioPlayer.play();
         }
+    }
+
+    async playExemplarAudio() {
+        const playBtn = document.getElementById('playExemplarBtn');
+        const exemplarInfo = document.getElementById('exemplarInfo');
+        
+        if (!playBtn) return;
+        
+        // Get current sentence
+        const levelData = CEFR_LEVELS[this.currentLevel];
+        const sentence = levelData.sentences[this.currentSentenceIndex];
+        
+        // Disable button and show loading
+        playBtn.disabled = true;
+        const originalContent = playBtn.innerHTML;
+        playBtn.innerHTML = '<span class="spinner"></span> Loading...';
+        
+        try {
+            const result = await this.exemplarAudio.playExemplar(sentence.text, this.currentLevel);
+            
+            if (result.success) {
+                // Show exemplar info
+                if (exemplarInfo) {
+                    const voiceInfo = exemplarInfo.querySelector('.voice-info');
+                    const qualityBadge = exemplarInfo.querySelector('.quality-badge');
+                    
+                    if (voiceInfo) {
+                        voiceInfo.textContent = `Voice: ${this.exemplarAudio.selectedVoice?.name || 'System Default'}`;
+                    }
+                    
+                    if (qualityBadge) {
+                        qualityBadge.textContent = result.type === 'recorded' ? 'Professional' : 'Synthetic';
+                        qualityBadge.className = `quality-badge ${result.type}`;
+                    }
+                    
+                    exemplarInfo.style.display = 'block';
+                }
+                
+                // Show comparison button if user has recorded
+                const compareBtn = document.getElementById('compareBtn');
+                const audioPlayer = document.getElementById('audioPlayer');
+                if (compareBtn && audioPlayer && audioPlayer.src) {
+                    compareBtn.style.display = 'inline-flex';
+                }
+                
+                this.showNotification(result.message, 'success');
+            } else {
+                this.showNotification(result.message || 'Could not play exemplar audio', 'error');
+            }
+        } catch (error) {
+            console.error('Error playing exemplar:', error);
+            this.showNotification('Error playing exemplar audio', 'error');
+        } finally {
+            // Restore button
+            playBtn.disabled = false;
+            playBtn.innerHTML = originalContent;
+        }
+    }
+
+    async compareWithExemplar() {
+        const compareBtn = document.getElementById('compareBtn');
+        const audioPlayer = document.getElementById('audioPlayer');
+        
+        if (!compareBtn || !audioPlayer || !audioPlayer.src) {
+            this.showNotification('No recording available for comparison', 'warning');
+            return;
+        }
+        
+        // Get current sentence
+        const levelData = CEFR_LEVELS[this.currentLevel];
+        const sentence = levelData.sentences[this.currentSentenceIndex];
+        
+        // Disable button and show loading
+        compareBtn.disabled = true;
+        const originalContent = compareBtn.innerHTML;
+        compareBtn.innerHTML = '<span class="spinner"></span> Comparing...';
+        
+        try {
+            // This would use the user's audio data for comparison
+            // For now, we'll show a comparison interface
+            const result = await this.exemplarAudio.compareWithExemplar(
+                null, // userAudio - would need actual audio data
+                sentence.text,
+                this.currentLevel
+            );
+            
+            if (result.success) {
+                this.showComparisonResults(result);
+            } else {
+                this.showNotification(result.message, 'error');
+            }
+        } catch (error) {
+            console.error('Error comparing with exemplar:', error);
+            this.showNotification('Error comparing with exemplar', 'error');
+        } finally {
+            // Restore button
+            compareBtn.disabled = false;
+            compareBtn.innerHTML = originalContent;
+        }
+    }
+
+    showComparisonResults(comparisonData) {
+        const container = document.getElementById('results');
+        if (!container) return;
+        
+        const html = `
+            <div class="comparison-results">
+                <h3>📊 Pronunciation Comparison</h3>
+                <div class="exemplar-info">
+                    <h4>Reference Audio</h4>
+                    <p>Text: "${comparisonData.exemplar.text}"</p>
+                    <p>Level: ${comparisonData.exemplar.level}</p>
+                    <p>Type: ${comparisonData.exemplar.type === 'recorded' ? 'Professional Recording' : 'Synthetic Voice'}</p>
+                </div>
+                
+                <div class="comparison-metrics">
+                    <h4>Comparison Analysis</h4>
+                    <div class="metric-grid">
+                        <div class="metric-item">
+                            <span class="metric-label">Tempo Similarity</span>
+                            <span class="metric-value">${comparisonData.comparison.tempoSimilarity}%</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Pronunciation Match</span>
+                            <span class="metric-value">${comparisonData.comparison.pronunciationMatch}%</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Rhythm Alignment</span>
+                            <span class="metric-value">${comparisonData.comparison.rhythmAlignment}%</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Overall Similarity</span>
+                            <span class="metric-value overall">${comparisonData.comparison.overallSimilarity}%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="recommendations">
+                    <h4>💡 Recommendations</h4>
+                    <ul>
+                        ${comparisonData.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                    </ul>
+                </div>
+                
+                <div class="audio-controls">
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('audioPlayer').play()">
+                        <span>🔊</span> Play My Recording
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="window.cefrApp.playExemplarAudio()">
+                        <span>🎯</span> Play Exemplar Again
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        container.classList.add('show');
     }
 
     showLoading(show) {
@@ -843,6 +1516,101 @@ class CEFRReadingTest {
         }, 1000);
     }
 
+    renderPhoneticAnalysisResults(phoneticData) {
+        if (!phoneticData || phoneticData.isBasicAnalysis) return '';
+
+        const segmental = phoneticData.segmental;
+        const suprasegmental = phoneticData.suprasegmental;
+        const feedback = phoneticData.feedback;
+
+        return `
+            <div class="phonetic-analysis">
+                <h4>🔬 Advanced Phonetic Analysis</h4>
+                
+                <div class="phonetic-scores">
+                    <div class="phonetic-score-grid">
+                        <div class="phonetic-score-card">
+                            <h5>Vowel Sounds</h5>
+                            <div class="score-circle ${this.getScoreColor(segmental.vowels.accuracy * 100)}">
+                                ${Math.round(segmental.vowels.accuracy * 100)}%
+                            </div>
+                            <p>${segmental.vowels.count} sounds analyzed</p>
+                        </div>
+                        
+                        <div class="phonetic-score-card">
+                            <h5>Consonant Sounds</h5>
+                            <div class="score-circle ${this.getScoreColor(segmental.consonants.accuracy * 100)}">
+                                ${Math.round(segmental.consonants.accuracy * 100)}%
+                            </div>
+                            <p>${segmental.consonants.count} sounds analyzed</p>
+                        </div>
+                        
+                        <div class="phonetic-score-card">
+                            <h5>Word Stress</h5>
+                            <div class="score-circle ${this.getScoreColor(suprasegmental.stress.accuracy * 100)}">
+                                ${Math.round(suprasegmental.stress.accuracy * 100)}%
+                            </div>
+                            <p>Stress patterns</p>
+                        </div>
+                        
+                        <div class="phonetic-score-card">
+                            <h5>Speech Rhythm</h5>
+                            <div class="score-circle ${this.getScoreColor(suprasegmental.rhythm.accuracy * 100)}">
+                                ${Math.round(suprasegmental.rhythm.accuracy * 100)}%
+                            </div>
+                            <p>Timing & flow</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="phonetic-feedback">
+                    ${feedback.strengths.length > 0 ? `
+                        <div class="feedback-section strengths">
+                            <h5>✅ Strengths</h5>
+                            <ul>
+                                ${feedback.strengths.map(strength => `<li>${strength}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+
+                    ${feedback.improvements.length > 0 ? `
+                        <div class="feedback-section improvements">
+                            <h5>📈 Areas for Improvement</h5>
+                            <ul>
+                                ${feedback.improvements.map(improvement => `<li>${improvement}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+
+                    ${feedback.specificTips.length > 0 ? `
+                        <div class="feedback-section tips">
+                            <h5>💡 Pronunciation Tips</h5>
+                            <ul>
+                                ${feedback.specificTips.map(tip => `<li>${tip}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+
+                    ${feedback.levelAppropriate.length > 0 ? `
+                        <div class="feedback-section level-specific">
+                            <h5>🎯 For Your Level (${phoneticData.level})</h5>
+                            <ul>
+                                ${feedback.levelAppropriate.map(advice => `<li>${advice}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    getScoreColor(score) {
+        if (score >= 85) return 'excellent';
+        if (score >= 75) return 'good';
+        if (score >= 65) return 'fair';
+        return 'needs-work';
+    }
+
     // Cleanup when page unloads
     cleanup() {
         this.audioRecorder.cleanup();
@@ -867,9 +1635,32 @@ window.addEventListener('beforeunload', () => {
 
 // Handle browser back/forward buttons
 window.addEventListener('popstate', (event) => {
-    if (event.state && event.state.level && window.cefrApp) {
-        window.cefrApp.selectLevel(event.state.level);
+    if (window.cefrApp) {
+        if (event.state && event.state.level) {
+            window.cefrApp.selectLevel(event.state.level);
+        }
+        if (event.state && event.state.view) {
+            window.cefrApp.switchView(event.state.view);
+        }
     }
+});
+
+// Handle URL parameters on page load
+window.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const view = urlParams.get('view');
+    const level = urlParams.get('level');
+    
+    setTimeout(() => {
+        if (window.cefrApp) {
+            if (view && ['test', 'analytics'].includes(view)) {
+                window.cefrApp.switchView(view);
+            }
+            if (level && window.cefrApp.currentLevel !== level) {
+                window.cefrApp.selectLevel(level);
+            }
+        }
+    }, 100);
 });
 
 export { CEFRReadingTest };
