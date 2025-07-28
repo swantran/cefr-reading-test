@@ -790,7 +790,6 @@ class CEFRReadingTest {
         }
 
         try {
-            this.audioRecorder.stopRecording();
             this.isRecording = false;
             this.updateRecordingState(false);
             this.stopTimer();
@@ -798,8 +797,8 @@ class CEFRReadingTest {
             // Show loading state
             this.showLoading(true);
             
-            // Get recorded audio data
-            const audioData = this.audioRecorder.getRecordedAudio();
+            // Wait for recording to complete and get audio data
+            const audioData = await this.audioRecorder.stopRecording();
             console.log('Audio data:', audioData);
             
             if (!audioData || !audioData.duration) {
