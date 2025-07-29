@@ -7,9 +7,9 @@ redirects = []
 [functions."*"]
 
 [build]
-publish = "/Users/swan/cefr-reading-test/deploy"
+publish = "deploy"
 publishOrigin = "ui"
-base = "/Users/swan/cefr-reading-test/deploy"
+base = ""
 
 [build.environment]
 

@@ -1,0 +1,143 @@
+<script src="/app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="/app.js"></script>
+<script type="text/javascript">
+var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        async function startRecording() {
+    console.log('Start recording button clicked');
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        const chunks = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.onstop = async () => {
+            console.log('Stop recording button clicked');
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            console.log('Recording stopped, processing audio...');
+            console.log('Calculated Duration:', blob.duration || 7); // Adjust duration logic
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = async () => {
+                const base64Audio = reader.result;
+                console.log('Analyzing recording, blob size:', blob.size, 'duration:', 7);
+                try {
+                    const response = await fetch('https://cefr-speech-backend.herokuapp.com/transcribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ audio: base64Audio, text: 'The quick brown fox jumps over the lazy dog' })
+                    });
+                    const data = await response.json();
+                    console.log('Backend response:', data);
+                } catch (error) {
+                    console.error('Backend error:', error);
+                }
+            };
+        };
+        recorder.start();
+        setTimeout(() => {
+            recorder.stop();
+            console.log('Stop recording button clicked');
+        }, 7000); // Record for 7s
+    } catch (error) {
+        console.error('Recording error:', error);
+    }
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CEFR Reading Test</title>
+    <link rel="stylesheet" href="/public/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>CEFR Reading Test</h1>
+        <button onclick="startRecording()">Start Recording</button>
+    </div>
+    <script src="/app.js"></script>
+    <script>
+        async function startRecording() {
+            console.log('Start recording button clicked');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const recorder = new MediaRecorder(stream);
+                const chunks = [];
+                recorder.ondataavailable = (e) => chunks.push(e.data);
+                recorder.onstop = async () => {
+                    console.log('Stop recording button clicked');
+                    console.log('Recording stopped, processing audio...');
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    const duration = 7; // Adjust based on actual duration
+                    console.log('Calculated Duration:', duration);
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = async () => {
+                        const base64Audio = reader.result;
+                        console.log('Analyzing recording, blob size:', blob.size, 'duration:', duration);
+                        const expectedText = 'she sells seashells by the seashore';
+                        try {
+                            const response = await fetch('https://cefr-speech-backend.herokuapp.com/transcribe', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ audio: base64Audio, text: expectedText })
+                            });
+                            const data = await response.json();
+                            console.log('Backend response:', data);
+                            const accuracy = data.accuracy || 0;
+                            console.log('Pronunciation accuracy:', accuracy);
+                            // Update UI with accuracy
+                        } catch (error) {
+                            console.error('Backend error:', error);
+                        }
+                    };
+                };
+                recorder.start();
+                setTimeout(() => {
+                    recorder.stop();
+                    console.log('Stop recording button clicked');
+                }, 7000); // Record for 7s
+            } catch (error) {
+                console.error('Recording error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
