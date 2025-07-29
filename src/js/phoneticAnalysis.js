@@ -127,7 +127,8 @@ export class PhoneticAnalysisEngine {
                 feedback: detailedFeedback,
                 level: level,
                 text: text,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                isBasicAnalysis: false
             };
 
         } catch (error) {
