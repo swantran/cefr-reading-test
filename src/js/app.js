@@ -855,6 +855,7 @@ class CEFRReadingTest {
                     this.currentLevel
                 );
                 console.log('Phonetic analysis complete:', phoneticAnalysisData);
+                console.log('phoneticAnalysisData.isBasicAnalysis:', phoneticAnalysisData?.isBasicAnalysis);
             } catch (error) {
                 console.warn('Phonetic analysis failed:', error);
             }
@@ -1533,7 +1534,7 @@ class CEFRReadingTest {
     }
 
     renderPhoneticAnalysisResults(phoneticData) {
-        if (!phoneticData || phoneticData.isBasicAnalysis) return '';
+        if (!phoneticData) return '';
 
         const segmental = phoneticData.segmental;
         const suprasegmental = phoneticData.suprasegmental;
