@@ -910,7 +910,7 @@ class CEFRReadingTest {
         const decision = this.adaptiveTesting.processTestResult(testResult);
         
         // Render placement results with progression info
-        this.renderPlacementResults(testResult, decision);
+        this.renderPlacementResults(testResult, decision, analysisData);
         
         // Check if placement test is complete
         if (decision.action === 'complete_assessment') {
@@ -923,7 +923,7 @@ class CEFRReadingTest {
         this.announceToScreenReader(`Score: ${scores.composite}%. ${decision.feedback}`);
     }
 
-    renderPlacementResults(result, decision) {
+    renderPlacementResults(result, decision, analysisData = null) {
         const container = document.getElementById('results');
         if (!container) return;
 
@@ -971,11 +971,25 @@ class CEFRReadingTest {
                         </button>
                     `}
                 </div>
+
+                ${analysisData && analysisData.phoneticAnalysis ? this.renderPhoneticAnalysisResults(analysisData.phoneticAnalysis) : ''}
             </div>
         `;
 
+        console.log('renderPlacementResults - analysisData:', analysisData ? 'PRESENT' : 'MISSING');
+        console.log('renderPlacementResults - phoneticAnalysis:', analysisData?.phoneticAnalysis ? 'PRESENT' : 'MISSING');
+
         container.innerHTML = html;
         container.classList.add('show');
+        
+        // Initialize phonetic visualizations if phonetic analysis is available
+        if (analysisData && analysisData.phoneticAnalysis) {
+            console.log('Setting up phonetic visualizations for placement results...');
+            setTimeout(() => {
+                console.log('Initializing phonetic visualizations for placement results now...');
+                this.initializePhoneticVisualizations();
+            }, 100); // Small delay to ensure DOM elements are ready
+        }
         
         // Update placement info for next test
         if (decision.action !== 'complete_assessment') {
