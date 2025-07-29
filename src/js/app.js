@@ -626,8 +626,11 @@ class CEFRReadingTest {
         container.classList.add('show');
 
         // Initialize phonetic visualizations if phonetic analysis is available
+        console.log('Checking for phoneticAnalysis in analysisData:', analysisData.phoneticAnalysis ? 'FOUND' : 'NOT FOUND');
         if (analysisData.phoneticAnalysis) {
+            console.log('Setting up phonetic visualizations...');
             setTimeout(() => {
+                console.log('Initializing phonetic visualizations now...');
                 this.initializePhoneticVisualizations();
             }, 100); // Small delay to ensure DOM elements are ready
         }
@@ -865,6 +868,9 @@ class CEFRReadingTest {
                 analysisData.phoneticAnalysis = phoneticAnalysisData;
                 analysisData.detailedFeedback = phoneticAnalysisData.feedback;
                 analysisData.pronunciationScore = phoneticAnalysisData.overall;
+                console.log('Enhanced analysisData with phoneticAnalysis:', analysisData.phoneticAnalysis ? 'YES' : 'NO');
+            } else {
+                console.log('No phoneticAnalysisData to add to analysisData');
             }
 
             // Process results through adaptive testing if in placement mode
@@ -1534,8 +1540,10 @@ class CEFRReadingTest {
     }
 
     renderPhoneticAnalysisResults(phoneticData) {
+        console.log('renderPhoneticAnalysisResults called with:', phoneticData ? 'DATA PRESENT' : 'NO DATA');
         if (!phoneticData) return '';
 
+        console.log('phoneticData.isBasicAnalysis:', phoneticData.isBasicAnalysis);
         const segmental = phoneticData.segmental;
         const suprasegmental = phoneticData.suprasegmental;
         const feedback = phoneticData.feedback;
