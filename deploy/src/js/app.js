@@ -8,6 +8,7 @@ import { AnalyticsEngine } from './analytics.js';
 import { AnalyticsDashboard } from './analyticsUI.js';
 import { AdaptiveTestingEngine } from './adaptiveTesting.js';
 import { ExemplarAudioManager } from './exemplarAudio.js';
+import { AudioVisualizer } from './audioVisualizer.js';
 import { PhoneticAnalysisEngine } from './phoneticAnalysis.js';
 
 class CEFRReadingTest {
@@ -21,6 +22,7 @@ class CEFRReadingTest {
         this.adaptiveTesting = new AdaptiveTestingEngine(this.storage);
         this.exemplarAudio = new ExemplarAudioManager();
         this.phoneticAnalysis = new PhoneticAnalysisEngine();
+        this.audioVisualizer = new AudioVisualizer();
         
         this.currentLevel = 'A1';
         this.currentSentenceIndex = 0;
@@ -32,6 +34,7 @@ class CEFRReadingTest {
         this.currentView = 'test'; // 'test' or 'analytics'
         this.testMode = 'placement'; // 'placement' or 'practice'
         this.placementCompleted = this.adaptiveTesting.hasCompletedPlacement();
+        this.currentAudioBlob = null; // For phonetic visualization
         
         this.initializeApp();
     }
@@ -622,6 +625,13 @@ class CEFRReadingTest {
         container.innerHTML = html;
         container.classList.add('show');
 
+        // Initialize phonetic visualizations if phonetic analysis is available
+        if (analysisData.phoneticAnalysis) {
+            setTimeout(() => {
+                this.initializePhoneticVisualizations();
+            }, 100); // Small delay to ensure DOM elements are ready
+        }
+
         // Save result to history
         const testResult = {
             level: this.currentLevel,
@@ -810,6 +820,9 @@ class CEFRReadingTest {
             }
             
             const duration = audioData.duration;
+            
+            // Store audio blob for phonetic visualization
+            this.currentAudioBlob = audioData.blob;
             
             // Show audio playback if enabled
             if (this.settings.audioPlayback) {
@@ -1603,6 +1616,68 @@ class CEFRReadingTest {
                         </div>
                     ` : ''}
                 </div>
+
+                <!-- Visual Phonetic Analysis Section -->
+                <div class="visual-analysis">
+                    <h4>📊 Visual Phonetic Analysis</h4>
+                    
+                    <div class="visualization-tabs">
+                        <button class="tab-btn active" data-tab="waveform">📊 Waveform</button>
+                        <button class="tab-btn" data-tab="spectrogram">🌈 Spectrogram</button>
+                        <button class="tab-btn" data-tab="formants">🎯 Formants</button>
+                    </div>
+                    
+                    <div class="visualization-content">
+                        <div class="viz-panel active" id="waveform-panel">
+                            <canvas id="waveformCanvas" width="600" height="200"></canvas>
+                            <div class="legend">
+                                <span class="legend-item">
+                                    <span class="color-box user"></span>Your Pronunciation
+                                </span>
+                                <div class="viz-controls">
+                                    <button class="btn btn-sm btn-secondary" id="exportWaveform">
+                                        💾 Export Image
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="viz-panel" id="spectrogram-panel">
+                            <canvas id="spectrogramCanvas" width="600" height="300"></canvas>
+                            <div class="spectrogram-legend">
+                                <div class="frequency-info">
+                                    <span>Low Frequency</span>
+                                    <div class="intensity-scale">
+                                        <div class="scale-bar"></div>
+                                        <span class="scale-label">Intensity</span>
+                                    </div>
+                                    <span>High Frequency</span>
+                                </div>
+                                <div class="viz-controls">
+                                    <button class="btn btn-sm btn-secondary" id="exportSpectrogram">
+                                        💾 Export Image
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="viz-panel" id="formants-panel">
+                            <canvas id="formantsCanvas" width="500" height="400"></canvas>
+                            <div class="formant-info">
+                                <div class="formant-values">
+                                    <p>F1 (jaw height): <span id="f1-value">--</span> Hz</p>
+                                    <p>F2 (tongue position): <span id="f2-value">--</span> Hz</p>
+                                    <p>F3 (lip rounding): <span id="f3-value">--</span> Hz</p>
+                                </div>
+                                <div class="viz-controls">
+                                    <button class="btn btn-sm btn-secondary" id="exportFormants">
+                                        💾 Export Image
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
     }
@@ -1612,6 +1687,226 @@ class CEFRReadingTest {
         if (score >= 75) return 'good';
         if (score >= 65) return 'fair';
         return 'needs-work';
+    }
+
+    // === PHONETIC VISUALIZATION METHODS ===
+
+    async initializePhoneticVisualizations() {
+        console.log('Initializing phonetic visualizations...');
+        
+        // Setup tab switching
+        this.setupVisualizationTabs();
+        
+        // Setup export buttons
+        this.setupExportButtons();
+        
+        // Initialize visualizations if audio is available
+        if (this.currentAudioBlob) {
+            await this.renderPhoneticVisualizations();
+        }
+    }
+
+    setupVisualizationTabs() {
+        const tabs = document.querySelectorAll('.tab-btn');
+        const panels = document.querySelectorAll('.viz-panel');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                const targetTab = e.target.dataset.tab;
+                
+                // Update active tab
+                tabs.forEach(t => t.classList.remove('active'));
+                e.target.classList.add('active');
+                
+                // Update active panel
+                panels.forEach(panel => {
+                    panel.classList.remove('active');
+                    if (panel.id === `${targetTab}-panel`) {
+                        panel.classList.add('active');
+                    }
+                });
+                
+                // Re-render visualization for the active tab
+                this.renderVisualizationForTab(targetTab);
+            });
+        });
+    }
+
+    setupExportButtons() {
+        const exportWaveform = document.getElementById('exportWaveform');
+        const exportSpectrogram = document.getElementById('exportSpectrogram');
+        const exportFormants = document.getElementById('exportFormants');
+
+        if (exportWaveform) {
+            exportWaveform.addEventListener('click', () => {
+                this.audioVisualizer.setCanvas('waveformCanvas');
+                this.audioVisualizer.exportAsImage('pronunciation-waveform.png');
+            });
+        }
+
+        if (exportSpectrogram) {
+            exportSpectrogram.addEventListener('click', () => {
+                this.audioVisualizer.setCanvas('spectrogramCanvas');
+                this.audioVisualizer.exportAsImage('pronunciation-spectrogram.png');
+            });
+        }
+
+        if (exportFormants) {
+            exportFormants.addEventListener('click', () => {
+                this.audioVisualizer.setCanvas('formantsCanvas');
+                this.audioVisualizer.exportAsImage('pronunciation-formants.png');
+            });
+        }
+    }
+
+    async renderPhoneticVisualizations() {
+        if (!this.currentAudioBlob) {
+            console.warn('No audio blob available for visualization');
+            return;
+        }
+
+        // Start with waveform (default active tab)
+        await this.renderVisualizationForTab('waveform');
+    }
+
+    async renderVisualizationForTab(tabName) {
+        if (!this.currentAudioBlob) return;
+
+        try {
+            console.log(`Rendering ${tabName} visualization...`);
+            
+            switch (tabName) {
+                case 'waveform':
+                    await this.renderWaveform();
+                    break;
+                case 'spectrogram':
+                    await this.renderSpectrogram();
+                    break;
+                case 'formants':
+                    await this.renderFormants();
+                    break;
+                default:
+                    console.warn('Unknown visualization tab:', tabName);
+            }
+        } catch (error) {
+            console.error(`Error rendering ${tabName} visualization:`, error);
+            this.showVisualizationError(tabName);
+        }
+    }
+
+    async renderWaveform() {
+        if (!this.audioVisualizer.setCanvas('waveformCanvas')) {
+            console.error('Cannot set waveform canvas');
+            return;
+        }
+
+        const success = await this.audioVisualizer.drawWaveform(this.currentAudioBlob, {
+            color: '#007bff',
+            lineWidth: 2,
+            showGrid: true,
+            showTimeLabels: true
+        });
+
+        if (!success) {
+            console.error('Failed to draw waveform');
+        }
+    }
+
+    async renderSpectrogram() {
+        if (!this.audioVisualizer.setCanvas('spectrogramCanvas')) {
+            console.error('Cannot set spectrogram canvas');
+            return;
+        }
+
+        const success = await this.audioVisualizer.drawSpectrogram(this.currentAudioBlob, {
+            fftSize: 2048,
+            hopSize: 512,
+            colorMap: 'viridis'
+        });
+
+        if (!success) {
+            console.error('Failed to draw spectrogram');
+        }
+    }
+
+    async renderFormants() {
+        if (!this.audioVisualizer.setCanvas('formantsCanvas')) {
+            console.error('Cannot set formants canvas');
+            return;
+        }
+
+        // Extract current phoneme from sentence if possible
+        const levelData = CEFR_LEVELS[this.currentLevel];
+        const sentence = levelData.sentences[this.currentSentenceIndex];
+        
+        // Try to identify target phoneme (simplified)
+        let targetPhoneme = null;
+        const text = sentence.text.toLowerCase();
+        if (text.includes('eat') || text.includes('see')) targetPhoneme = 'i';
+        else if (text.includes('cat') || text.includes('bad')) targetPhoneme = 'æ';
+        else if (text.includes('boot') || text.includes('food')) targetPhoneme = 'u';
+
+        const result = await this.audioVisualizer.drawFormantPlot(this.currentAudioBlob, targetPhoneme, {
+            showVowelSpace: true,
+            showTargetRegion: !!targetPhoneme,
+            pointSize: 6
+        });
+
+        if (result.success && result.formants && result.formants.length > 0) {
+            // Update formant values display
+            const avgFormants = this.calculateAverageFormants(result.formants);
+            this.updateFormantDisplay(avgFormants);
+        }
+    }
+
+    calculateAverageFormants(formants) {
+        const validFormants = formants.filter(f => f.f1 > 0 && f.f2 > 0);
+        if (validFormants.length === 0) return { f1: 0, f2: 0, f3: 0 };
+
+        const sum = validFormants.reduce((acc, f) => ({
+            f1: acc.f1 + f.f1,
+            f2: acc.f2 + f.f2,
+            f3: acc.f3 + (f.f3 || 0)
+        }), { f1: 0, f2: 0, f3: 0 });
+
+        return {
+            f1: Math.round(sum.f1 / validFormants.length),
+            f2: Math.round(sum.f2 / validFormants.length),
+            f3: Math.round(sum.f3 / validFormants.length)
+        };
+    }
+
+    updateFormantDisplay(formants) {
+        const f1Element = document.getElementById('f1-value');
+        const f2Element = document.getElementById('f2-value');
+        const f3Element = document.getElementById('f3-value');
+
+        if (f1Element) f1Element.textContent = formants.f1 > 0 ? formants.f1 : '--';
+        if (f2Element) f2Element.textContent = formants.f2 > 0 ? formants.f2 : '--';
+        if (f3Element) f3Element.textContent = formants.f3 > 0 ? formants.f3 : '--';
+    }
+
+    showVisualizationError(tabName) {
+        const canvas = document.getElementById(`${tabName}Canvas`);
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#6c757d';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(
+                `Error loading ${tabName} visualization`,
+                canvas.width / 2,
+                canvas.height / 2 - 10
+            );
+            ctx.fillText(
+                'Audio analysis may not be available',
+                canvas.width / 2,
+                canvas.height / 2 + 10
+            );
+        }
     }
 
     // Cleanup when page unloads
