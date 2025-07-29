@@ -28,8 +28,8 @@ export class AdaptiveTestingEngine {
             startTime: Date.now(),
             currentLevel: 'A1',
             currentSentenceIndex: 0,
-            levelAttempts: {},
-            levelScores: {},
+            levelAttempts: { A1: 0, A2: 0, B1: 0, B2: 0, C1: 0, C2: 0 },
+            levelScores: { A1: [], A2: [], B1: [], B2: [], C1: [], C2: [] },
             isPlacementTest: true,
             placementComplete: false,
             assignedLevel: null,
@@ -76,6 +76,14 @@ export class AdaptiveTestingEngine {
     processTestResult(result) {
         const level = this.currentAssessment.currentLevel;
         const score = result.scores.composite;
+
+        // Ensure arrays are initialized
+        if (!this.currentAssessment.levelScores[level]) {
+            this.currentAssessment.levelScores[level] = [];
+        }
+        if (!this.currentAssessment.levelAttempts[level]) {
+            this.currentAssessment.levelAttempts[level] = 0;
+        }
 
         // Record the result
         this.currentAssessment.levelScores[level].push(score);
