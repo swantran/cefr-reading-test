@@ -762,7 +762,7 @@ class CEFRReadingTest {
 
             // Start recording
             console.log('Starting recording...');
-            const recordingPromise = this.audioRecorder.startRecording();
+            this.recordingPromise = this.audioRecorder.startRecording();
             this.isRecording = true;
             this.recordingStartTime = Date.now();
             
@@ -773,9 +773,6 @@ class CEFRReadingTest {
             // Announce to screen readers
             this.announceToScreenReader('Recording started');
             console.log('Recording started successfully');
-
-            // Wait for recording to complete
-            await recordingPromise;
             
         } catch (error) {
             console.error('Recording failed:', error);
@@ -801,8 +798,11 @@ class CEFRReadingTest {
             // Show loading state
             this.showLoading(true);
             
+            // Stop the recording
+            this.audioRecorder.stopRecording();
+            
             // Wait for recording to complete and get audio data
-            const audioData = await this.audioRecorder.stopRecording();
+            const audioData = await this.recordingPromise;
             console.log('Audio data:', audioData);
             
             if (!audioData || !audioData.duration) {
