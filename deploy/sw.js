@@ -1,7 +1,7 @@
 // Service Worker for offline functionality
-const CACHE_NAME = 'cefr-reading-test-v1.0.1';
-const STATIC_CACHE = 'static-v1.0.1';
-const DYNAMIC_CACHE = 'dynamic-v1.0.1';
+const CACHE_NAME = 'cefr-reading-test-v2025-01-29-fix2';
+const STATIC_CACHE = 'static-v2025-01-29-fix2';
+const DYNAMIC_CACHE = 'dynamic-v2025-01-29-fix2';
 
 // Files to cache for offline use
 const STATIC_FILES = [
@@ -14,7 +14,8 @@ const STATIC_FILES = [
     '/src/js/scoring.js',
     '/src/js/storage.js',
     '/src/js/cefrData.js',
-    '/src/js/utils.js'
+    '/src/js/utils.js',
+    '/src/js/adaptiveTesting.js'
 ];
 
 // Install event - cache static files
