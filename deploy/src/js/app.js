@@ -74,7 +74,7 @@ class CEFRReadingTest {
                 });
             
             this.isInitialized = true;
-            console.log('CEFR Reading Test initialized successfully - VERSION: 2025-01-29-fix3 with audio recording fix');
+            console.log('CEFR Reading Test initialized successfully - VERSION: 2025-01-30-placement-fix with phonetic analysis in placement tests');
         } catch (error) {
             console.error('Failed to initialize app:', error);
             this.showNotification('Failed to initialize application', 'error');
