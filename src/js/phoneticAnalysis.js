@@ -138,18 +138,25 @@ export class PhoneticAnalysisEngine {
     }
 
     async extractAcousticFeatures(audioData) {
-        // Simulate advanced acoustic feature extraction
-        // In production, this would use Web Audio API and signal processing
-        
-        const features = {
-            fundamental: this.extractF0(audioData),
-            formants: this.extractFormants(audioData),
-            spectral: this.extractSpectralFeatures(audioData),
-            temporal: this.extractTemporalFeatures(audioData),
-            energy: this.extractEnergyFeatures(audioData)
-        };
+        // Real acoustic feature extraction using Web Audio API
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const arrayBuffer = await audioData.arrayBuffer();
+            const decodedAudio = await audioContext.decodeAudioData(arrayBuffer);
+            
+            const features = {
+                fundamental: await this.extractF0(decodedAudio),
+                formants: await this.extractFormants(decodedAudio),
+                spectral: await this.extractSpectralFeatures(decodedAudio),
+                temporal: await this.extractTemporalFeatures(decodedAudio),
+                energy: await this.extractEnergyFeatures(decodedAudio)
+            };
 
-        return features;
+            return features;
+        } catch (error) {
+            console.error('Audio feature extraction failed:', error);
+            return this.getFallbackFeatures();
+        }
     }
 
     async segmentPhonetically(features, text) {
@@ -245,20 +252,43 @@ export class PhoneticAnalysisEngine {
     // === DETAILED ANALYSIS METHODS ===
 
     analyzePhoneme(phoneme, features, level) {
-        // Simulate detailed phoneme analysis
-        const baseAccuracy = 0.7 + Math.random() * 0.3; // 70-100% base accuracy
+        // Real phoneme analysis based on acoustic features
+        let accuracy = 0.5; // Start with low base score
         
-        // Adjust for level-specific common errors
+        // Analyze energy levels - mumbling has low energy
+        if (features.energy < 0.1) {
+            accuracy -= 0.3; // Penalize mumbling/low energy
+        } else if (features.energy > 0.2) {
+            accuracy += 0.2; // Reward clear articulation
+        }
+
+        // Analyze spectral clarity - clear pronunciation has distinct peaks
+        if (features.spectral && features.spectral.clarity) {
+            accuracy += features.spectral.clarity * 0.3;
+        }
+
+        // Analyze formant quality for vowels
+        if (this.isVowel(phoneme) && features.formants) {
+            const formantAccuracy = this.analyzeVowelFormants(phoneme, features.formants);
+            accuracy += formantAccuracy * 0.4;
+        }
+
+        // Analyze consonant features
+        if (!this.isVowel(phoneme)) {
+            const consonantAccuracy = this.analyzeConsonantFeatures(phoneme, features);
+            accuracy += consonantAccuracy * 0.4;
+        }
+
+        // Apply level-specific penalties for common errors
         const levelErrors = this.levelSpecificErrors[level] || [];
-        let accuracyAdjustment = 0;
-        
         for (const error of levelErrors) {
             if (error.pattern.test && error.pattern.test(phoneme)) {
-                accuracyAdjustment -= 0.1; // Reduce accuracy for common errors
+                accuracy -= 0.1;
             }
         }
 
-        const finalAccuracy = Math.max(0.3, Math.min(1.0, baseAccuracy + accuracyAdjustment));
+        // Clamp accuracy between 0 and 1
+        const finalAccuracy = Math.max(0, Math.min(1.0, accuracy));
 
         return {
             phoneme: phoneme,
@@ -445,40 +475,92 @@ export class PhoneticAnalysisEngine {
         return feedback;
     }
 
-    // === SIMULATION METHODS (for development/testing) ===
+    // === REAL AUDIO ANALYSIS METHODS ===
 
-    extractF0(audioData) {
-        return { mean: 150 + Math.random() * 100, range: 50 + Math.random() * 50 };
+    async extractF0(audioBuffer) {
+        // Extract fundamental frequency using autocorrelation
+        const channelData = audioBuffer.getChannelData(0);
+        const sampleRate = audioBuffer.sampleRate;
+        
+        // Analyze in 50ms windows
+        const windowSize = Math.floor(sampleRate * 0.05);
+        const f0Values = [];
+        
+        for (let i = 0; i < channelData.length - windowSize; i += windowSize) {
+            const window = channelData.slice(i, i + windowSize);
+            const f0 = this.calculateF0Autocorrelation(window, sampleRate);
+            if (f0 > 0) f0Values.push(f0);
+        }
+        
+        const mean = f0Values.length > 0 ? f0Values.reduce((a, b) => a + b) / f0Values.length : 0;
+        const range = f0Values.length > 0 ? Math.max(...f0Values) - Math.min(...f0Values) : 0;
+        
+        return { mean, range, values: f0Values };
     }
 
-    extractFormants(audioData) {
-        return {
-            F1: 500 + Math.random() * 300,
-            F2: 1500 + Math.random() * 500,
-            F3: 2500 + Math.random() * 500
-        };
+    async extractFormants(audioBuffer) {
+        // Extract formants using LPC analysis
+        const channelData = audioBuffer.getChannelData(0);
+        const sampleRate = audioBuffer.sampleRate;
+        
+        // Use larger window for formant analysis (25ms)
+        const windowSize = Math.floor(sampleRate * 0.025);
+        const formantFrames = [];
+        
+        for (let i = 0; i < channelData.length - windowSize; i += windowSize) {
+            const window = channelData.slice(i, i + windowSize);
+            const formants = this.calculateFormants(window, sampleRate);
+            formantFrames.push(formants);
+        }
+        
+        // Average the formants
+        const avgFormants = this.averageFormants(formantFrames);
+        return avgFormants;
     }
 
-    extractSpectralFeatures(audioData) {
-        return {
-            centroid: 1000 + Math.random() * 1000,
-            bandwidth: 500 + Math.random() * 500,
-            rolloff: 3000 + Math.random() * 1000
-        };
+    async extractSpectralFeatures(audioBuffer) {
+        const channelData = audioBuffer.getChannelData(0);
+        const sampleRate = audioBuffer.sampleRate;
+        
+        // Calculate FFT for spectral analysis
+        const fftSize = 2048;
+        const spectrum = this.calculateSpectrum(channelData, fftSize);
+        
+        const centroid = this.calculateSpectralCentroid(spectrum, sampleRate);
+        const bandwidth = this.calculateSpectralBandwidth(spectrum, centroid, sampleRate);
+        const rolloff = this.calculateSpectralRolloff(spectrum, sampleRate, 0.85);
+        const clarity = this.calculateSpectralClarity(spectrum);
+        
+        return { centroid, bandwidth, rolloff, clarity };
     }
 
-    extractTemporalFeatures(audioData) {
-        return {
-            duration: 2 + Math.random() * 3,
-            silences: Math.floor(Math.random() * 3)
-        };
+    async extractTemporalFeatures(audioBuffer) {
+        const channelData = audioBuffer.getChannelData(0);
+        const sampleRate = audioBuffer.sampleRate;
+        
+        const duration = audioBuffer.duration;
+        const silences = this.detectSilences(channelData, sampleRate);
+        const voicedRatio = this.calculateVoicedRatio(channelData, sampleRate);
+        
+        return { duration, silences: silences.length, voicedRatio };
     }
 
-    extractEnergyFeatures(audioData) {
-        return {
-            rms: 0.1 + Math.random() * 0.3,
-            peak: 0.5 + Math.random() * 0.5
-        };
+    async extractEnergyFeatures(audioBuffer) {
+        const channelData = audioBuffer.getChannelData(0);
+        
+        // Calculate RMS energy
+        let sumSquares = 0;
+        let peak = 0;
+        
+        for (let i = 0; i < channelData.length; i++) {
+            const sample = Math.abs(channelData[i]);
+            sumSquares += sample * sample;
+            if (sample > peak) peak = sample;
+        }
+        
+        const rms = Math.sqrt(sumSquares / channelData.length);
+        
+        return { rms, peak };
     }
 
     extractWordFeatures(features, index, totalWords) {
@@ -621,6 +703,269 @@ export class PhoneticAnalysisEngine {
         }
         
         return true;
+    }
+
+    // === SIGNAL PROCESSING HELPER METHODS ===
+
+    calculateF0Autocorrelation(window, sampleRate) {
+        // Autocorrelation-based pitch detection
+        const minPeriod = Math.floor(sampleRate / 500); // 500 Hz max
+        const maxPeriod = Math.floor(sampleRate / 50);  // 50 Hz min
+        
+        let maxCorrelation = 0;
+        let bestPeriod = 0;
+        
+        for (let period = minPeriod; period <= maxPeriod; period++) {
+            let correlation = 0;
+            let norm = 0;
+            
+            for (let i = 0; i < window.length - period; i++) {
+                correlation += window[i] * window[i + period];
+                norm += window[i] * window[i];
+            }
+            
+            if (norm > 0) {
+                correlation /= norm;
+                if (correlation > maxCorrelation) {
+                    maxCorrelation = correlation;
+                    bestPeriod = period;
+                }
+            }
+        }
+        
+        return bestPeriod > 0 ? sampleRate / bestPeriod : 0;
+    }
+
+    calculateFormants(window, sampleRate) {
+        // Simplified formant estimation using peak detection
+        const spectrum = this.calculateSpectrum(window, 1024);
+        const freqBin = sampleRate / spectrum.length;
+        
+        // Find peaks in low frequency range for formants
+        const peaks = this.findSpectralPeaks(spectrum, 5);
+        const formants = { F1: 0, F2: 0, F3: 0 };
+        
+        if (peaks.length > 0) formants.F1 = peaks[0] * freqBin;
+        if (peaks.length > 1) formants.F2 = peaks[1] * freqBin;
+        if (peaks.length > 2) formants.F3 = peaks[2] * freqBin;
+        
+        return formants;
+    }
+
+    calculateSpectrum(samples, fftSize) {
+        // Simple FFT using built-in methods or approximation
+        const spectrum = new Array(fftSize / 2).fill(0);
+        
+        for (let k = 0; k < spectrum.length; k++) {
+            let real = 0, imag = 0;
+            for (let n = 0; n < Math.min(samples.length, fftSize); n++) {
+                const angle = -2 * Math.PI * k * n / fftSize;
+                real += samples[n] * Math.cos(angle);
+                imag += samples[n] * Math.sin(angle);
+            }
+            spectrum[k] = Math.sqrt(real * real + imag * imag);
+        }
+        
+        return spectrum;
+    }
+
+    calculateSpectralCentroid(spectrum, sampleRate) {
+        let weightedSum = 0;
+        let magnitudeSum = 0;
+        
+        for (let i = 0; i < spectrum.length; i++) {
+            const freq = i * sampleRate / (2 * spectrum.length);
+            weightedSum += freq * spectrum[i];
+            magnitudeSum += spectrum[i];
+        }
+        
+        return magnitudeSum > 0 ? weightedSum / magnitudeSum : 0;
+    }
+
+    calculateSpectralBandwidth(spectrum, centroid, sampleRate) {
+        let weightedVariance = 0;
+        let magnitudeSum = 0;
+        
+        for (let i = 0; i < spectrum.length; i++) {
+            const freq = i * sampleRate / (2 * spectrum.length);
+            const deviation = freq - centroid;
+            weightedVariance += deviation * deviation * spectrum[i];
+            magnitudeSum += spectrum[i];
+        }
+        
+        return magnitudeSum > 0 ? Math.sqrt(weightedVariance / magnitudeSum) : 0;
+    }
+
+    calculateSpectralRolloff(spectrum, sampleRate, threshold) {
+        const totalEnergy = spectrum.reduce((sum, val) => sum + val, 0);
+        const thresholdEnergy = totalEnergy * threshold;
+        
+        let cumulativeEnergy = 0;
+        for (let i = 0; i < spectrum.length; i++) {
+            cumulativeEnergy += spectrum[i];
+            if (cumulativeEnergy >= thresholdEnergy) {
+                return i * sampleRate / (2 * spectrum.length);
+            }
+        }
+        
+        return sampleRate / 2;
+    }
+
+    calculateSpectralClarity(spectrum) {
+        // Measure how "peaky" the spectrum is (clear vs muddy)
+        const mean = spectrum.reduce((sum, val) => sum + val, 0) / spectrum.length;
+        const variance = spectrum.reduce((sum, val) => sum + (val - mean) ** 2, 0) / spectrum.length;
+        const clarity = variance / (mean ** 2 + 1e-10); // Coefficient of variation
+        
+        return Math.min(1.0, clarity / 10); // Normalize to 0-1
+    }
+
+    findSpectralPeaks(spectrum, numPeaks) {
+        const peaks = [];
+        
+        for (let i = 1; i < spectrum.length - 1; i++) {
+            if (spectrum[i] > spectrum[i-1] && spectrum[i] > spectrum[i+1]) {
+                peaks.push({ index: i, magnitude: spectrum[i] });
+            }
+        }
+        
+        // Sort by magnitude and return top peaks
+        peaks.sort((a, b) => b.magnitude - a.magnitude);
+        return peaks.slice(0, numPeaks).map(peak => peak.index);
+    }
+
+    detectSilences(channelData, sampleRate, threshold = 0.01) {
+        const silences = [];
+        const windowSize = Math.floor(sampleRate * 0.01); // 10ms windows
+        let inSilence = false;
+        let silenceStart = 0;
+        
+        for (let i = 0; i < channelData.length; i += windowSize) {
+            const window = channelData.slice(i, i + windowSize);
+            const energy = this.calculateRMS(window);
+            
+            if (energy < threshold) {
+                if (!inSilence) {
+                    inSilence = true;
+                    silenceStart = i / sampleRate;
+                }
+            } else {
+                if (inSilence) {
+                    inSilence = false;
+                    silences.push({
+                        start: silenceStart,
+                        end: i / sampleRate,
+                        duration: (i / sampleRate) - silenceStart
+                    });
+                }
+            }
+        }
+        
+        return silences;
+    }
+
+    calculateVoicedRatio(channelData, sampleRate) {
+        const windowSize = Math.floor(sampleRate * 0.02); // 20ms windows
+        let voicedFrames = 0;
+        let totalFrames = 0;
+        
+        for (let i = 0; i < channelData.length - windowSize; i += windowSize) {
+            const window = channelData.slice(i, i + windowSize);
+            const f0 = this.calculateF0Autocorrelation(window, sampleRate);
+            
+            totalFrames++;
+            if (f0 > 50 && f0 < 400) { // Typical human voice range
+                voicedFrames++;
+            }
+        }
+        
+        return totalFrames > 0 ? voicedFrames / totalFrames : 0;
+    }
+
+    calculateRMS(samples) {
+        let sumSquares = 0;
+        for (let i = 0; i < samples.length; i++) {
+            sumSquares += samples[i] * samples[i];
+        }
+        return Math.sqrt(sumSquares / samples.length);
+    }
+
+    averageFormants(formantFrames) {
+        if (formantFrames.length === 0) return { F1: 0, F2: 0, F3: 0 };
+        
+        const avg = { F1: 0, F2: 0, F3: 0 };
+        let validFrames = 0;
+        
+        for (const frame of formantFrames) {
+            if (frame.F1 > 0 && frame.F2 > 0) {
+                avg.F1 += frame.F1;
+                avg.F2 += frame.F2;
+                avg.F3 += frame.F3;
+                validFrames++;
+            }
+        }
+        
+        if (validFrames > 0) {
+            avg.F1 /= validFrames;
+            avg.F2 /= validFrames;
+            avg.F3 /= validFrames;
+        }
+        
+        return avg;
+    }
+
+    analyzeVowelFormants(phoneme, formants) {
+        // Expected formant ranges for different vowels
+        const vowelTargets = {
+            'æ': { F1: 700, F2: 1700 }, // cat
+            'ɑ:': { F1: 750, F2: 1100 }, // car
+            'ʌ': { F1: 650, F2: 1400 }, // cut
+            'i:': { F1: 300, F2: 2300 }, // bee
+            'ɪ': { F1: 400, F2: 2000 }, // bit
+            'u:': { F1: 300, F2: 900 }, // boot
+            'ʊ': { F1: 400, F2: 1100 }  // put
+        };
+        
+        const target = vowelTargets[phoneme];
+        if (!target || !formants.F1 || !formants.F2) return 0.5;
+        
+        // Calculate distance from target
+        const f1Error = Math.abs(formants.F1 - target.F1) / target.F1;
+        const f2Error = Math.abs(formants.F2 - target.F2) / target.F2;
+        
+        const avgError = (f1Error + f2Error) / 2;
+        return Math.max(0, 1 - avgError); // Convert error to accuracy
+    }
+
+    analyzeConsonantFeatures(phoneme, features) {
+        // Analyze consonant based on energy and spectral characteristics
+        let accuracy = 0.5;
+        
+        // Fricatives should have high frequency energy
+        if (['s', 'z', 'ʃ', 'ʒ', 'f', 'v', 'θ', 'ð'].includes(phoneme)) {
+            if (features.spectral && features.spectral.centroid > 2000) {
+                accuracy += 0.3; // Good fricative energy
+            }
+        }
+        
+        // Stops should have burst characteristics
+        if (['p', 'b', 't', 'd', 'k', 'g'].includes(phoneme)) {
+            if (features.energy > 0.2) {
+                accuracy += 0.3; // Good burst energy
+            }
+        }
+        
+        return Math.min(1.0, accuracy);
+    }
+
+    getFallbackFeatures() {
+        return {
+            fundamental: { mean: 0, range: 0, values: [] },
+            formants: { F1: 0, F2: 0, F3: 0 },
+            spectral: { centroid: 0, bandwidth: 0, rolloff: 0, clarity: 0 },
+            temporal: { duration: 1, silences: 0, voicedRatio: 0 },
+            energy: { rms: 0.01, peak: 0.01 }
+        };
     }
 
     getFallbackAnalysis(text, level) {
