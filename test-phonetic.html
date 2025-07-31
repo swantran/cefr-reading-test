@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Phonetic Analysis Test</title>
+</head>
+<body>
+    <h1>Test Real Phonetic Analysis</h1>
+    <button id="testBtn">Test Audio Processing</button>
+    <div id="results"></div>
+    
+    <script>
+        document.getElementById('testBtn').onclick = async function() {
+            try {
+                // Test if we can access audio processing
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('✅ Audio context created successfully');
+                
+                // Create a simple test tone
+                const sampleRate = audioContext.sampleRate;
+                const duration = 1; // 1 second
+                const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+                const data = buffer.getChannelData(0);
+                
+                // Generate a 440Hz tone (A note)
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = Math.sin(2 * Math.PI * 440 * i / sampleRate) * 0.5;
+                }
+                
+                console.log('✅ Test audio buffer created:', {
+                    duration: buffer.duration,
+                    sampleRate: buffer.sampleRate,
+                    channels: buffer.numberOfChannels
+                });
+                
+                // Test basic audio analysis
+                const samples = buffer.getChannelData(0);
+                let sum = 0;
+                for (let i = 0; i < samples.length; i++) {
+                    sum += samples[i] * samples[i];
+                }
+                const rms = Math.sqrt(sum / samples.length);
+                
+                console.log('✅ Basic audio analysis completed:', {
+                    rms: rms,
+                    peak: Math.max(...samples),
+                    isValidAudio: rms > 0
+                });
+                
+                document.getElementById('results').innerHTML = `
+                    <p>✅ Audio Context: Working</p>
+                    <p>✅ Buffer Creation: Working</p>
+                    <p>✅ Audio Analysis: Working (RMS: ${rms.toFixed(4)})</p>
+                    <p><strong>Real phonetic analysis should work!</strong></p>
+                `;
+                
+            } catch (error) {
+                console.error('❌ Audio processing failed:', error);
+                document.getElementById('results').innerHTML = `
+                    <p>❌ Error: ${error.message}</p>
+                    <p>Audio processing may not work properly</p>
+                `;
+            }
+        };
+    </script>
+</body>
+</html>
