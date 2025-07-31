@@ -10,6 +10,7 @@ import { AdaptiveTestingEngine } from './adaptiveTesting.js';
 import { ExemplarAudioManager } from './exemplarAudio.js';
 import { AudioVisualizer } from './audioVisualizer.js';
 import { PhoneticAnalysisEngine } from './phoneticAnalysis.js';
+import { PronunciationExerciseGenerator } from './pronunciationExercises.js';
 
 class CEFRReadingTest {
     constructor() {
@@ -23,6 +24,7 @@ class CEFRReadingTest {
         this.exemplarAudio = new ExemplarAudioManager();
         this.phoneticAnalysis = new PhoneticAnalysisEngine();
         this.audioVisualizer = new AudioVisualizer();
+        this.exerciseGenerator = new PronunciationExerciseGenerator();
         
         this.currentLevel = 'A1';
         this.currentSentenceIndex = 0;
@@ -1701,6 +1703,163 @@ class CEFRReadingTest {
                         </div>
                     </div>
                 </div>
+
+                <!-- Targeted Pronunciation Exercises -->
+                ${this.renderPronunciationExercises(phoneticData)}
+            </div>
+        `;
+    }
+
+    renderPronunciationExercises(phoneticData) {
+        if (!phoneticData) return '';
+        
+        // Generate exercises based on phonetic analysis
+        const exerciseData = this.exerciseGenerator.generateExercises(phoneticData, this.currentLevel);
+        
+        if (!exerciseData.exercises || exerciseData.exercises.length === 0) {
+            return `
+                <div class="pronunciation-exercises">
+                    <h4>🎯 Targeted Pronunciation Practice</h4>
+                    <div class="exercise-summary excellent">
+                        <p>Excellent pronunciation! Your speech shows strong accuracy across all areas.</p>
+                        <p>Continue practicing to maintain your skills and develop even more natural fluency.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="pronunciation-exercises">
+                <h4>🎯 Targeted Pronunciation Practice</h4>
+                
+                <div class="exercise-summary">
+                    <div class="summary-stats">
+                        <div class="stat">
+                            <span class="stat-value">${exerciseData.summary.totalIssues}</span>
+                            <span class="stat-label">Areas to improve</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value">${exerciseData.estimatedTime}min</span>
+                            <span class="stat-label">Practice time</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-value">${exerciseData.exercises.length}</span>
+                            <span class="stat-label">Exercises</span>
+                        </div>
+                    </div>
+                    
+                    <div class="recommendation">
+                        <p><strong>Recommendation:</strong> ${exerciseData.summary.recommendation}</p>
+                    </div>
+                    
+                    ${exerciseData.summary.priorities.length > 0 ? `
+                        <div class="priority-areas">
+                            <h5>Top Priority Areas:</h5>
+                            <div class="priority-list">
+                                ${exerciseData.summary.priorities.map(priority => `
+                                    <div class="priority-item">
+                                        <span class="priority-sound">/${priority.sound || priority.type}/</span>
+                                        <span class="priority-severity">${priority.severity}% difficulty</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <div class="exercises-list">
+                    ${exerciseData.exercises.map((exercise, index) => `
+                        <div class="exercise-card" data-exercise-id="${index}">
+                            <div class="exercise-header">
+                                <h5>${exercise.title}</h5>
+                                <div class="exercise-meta">
+                                    <span class="exercise-category ${exercise.category}">${exercise.category}</span>
+                                    <span class="exercise-time">${exercise.estimatedTime}min</span>
+                                    <span class="exercise-priority priority-${Math.round(exercise.priority * 10)}">${Math.round(exercise.priority * 100)}% priority</span>
+                                </div>
+                            </div>
+                            
+                            <div class="exercise-content">
+                                <p class="exercise-instructions">${exercise.instructions}</p>
+                                
+                                ${exercise.type === 'minimal_pairs' && exercise.pairs ? `
+                                    <div class="minimal-pairs">
+                                        <h6>Practice Pairs:</h6>
+                                        <div class="pairs-grid">
+                                            ${exercise.pairs.map(pair => `
+                                                <div class="pair-item">
+                                                    <span class="target-word">${pair.target}</span>
+                                                    <span class="vs">vs</span>
+                                                    <span class="contrast-word">${pair.contrast}</span>
+                                                    <span class="focus-note">${pair.focus}</span>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${exercise.type === 'isolation' && exercise.words ? `
+                                    <div class="isolation-practice">
+                                        <h6>Practice Words:</h6>
+                                        <div class="word-list">
+                                            ${exercise.words.map(word => `
+                                                <span class="practice-word">${word}</span>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${exercise.type === 'sentences' && exercise.sentences ? `
+                                    <div class="sentence-practice">
+                                        <h6>Practice Sentences:</h6>
+                                        <div class="sentence-list">
+                                            ${exercise.sentences.map(sentence => `
+                                                <div class="practice-sentence">"${sentence}"</div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${exercise.type === 'articulation' && exercise.words ? `
+                                    <div class="articulation-practice">
+                                        <h6>Articulation Focus:</h6>
+                                        <div class="word-list">
+                                            ${exercise.words.map(word => `
+                                                <span class="practice-word">${word}</span>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${exercise.exercises ? `
+                                    <div class="generic-exercises">
+                                        ${exercise.exercises.map(ex => `
+                                            <div class="generic-exercise">
+                                                <strong>${ex.focus}:</strong> ${ex.instruction}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            
+                            <div class="exercise-actions">
+                                <button class="btn btn-sm btn-primary start-exercise" data-exercise-id="${index}">
+                                    🎤 Practice This
+                                </button>
+                                <button class="btn btn-sm btn-secondary mark-complete" data-exercise-id="${index}">
+                                    ✅ Mark Complete
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                ${exerciseData.nextSession.hasMore ? `
+                    <div class="next-session">
+                        <h5>Next Practice Session</h5>
+                        <p>${exerciseData.nextSession.suggestion}</p>
+                    </div>
+                ` : ''}
             </div>
         `;
     }
