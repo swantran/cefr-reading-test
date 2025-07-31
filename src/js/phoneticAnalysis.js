@@ -140,21 +140,50 @@ export class PhoneticAnalysisEngine {
     async extractAcousticFeatures(audioData) {
         // Real acoustic feature extraction using Web Audio API
         try {
+            console.log('Starting acoustic feature extraction...');
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            console.log('Audio context created');
+            
             const arrayBuffer = await audioData.arrayBuffer();
+            console.log('Array buffer created, size:', arrayBuffer.byteLength);
+            
             const decodedAudio = await audioContext.decodeAudioData(arrayBuffer);
+            console.log('Audio decoded, duration:', decodedAudio.duration, 'channels:', decodedAudio.numberOfChannels);
+            
+            console.log('Extracting F0...');
+            const fundamental = await this.extractF0(decodedAudio);
+            console.log('F0 extracted:', fundamental);
+            
+            console.log('Extracting formants...');
+            const formants = await this.extractFormants(decodedAudio);
+            console.log('Formants extracted:', formants);
+            
+            console.log('Extracting spectral features...');
+            const spectral = await this.extractSpectralFeatures(decodedAudio);
+            console.log('Spectral features extracted:', spectral);
+            
+            console.log('Extracting temporal features...');
+            const temporal = await this.extractTemporalFeatures(decodedAudio);
+            console.log('Temporal features extracted:', temporal);
+            
+            console.log('Extracting energy features...');
+            const energy = await this.extractEnergyFeatures(decodedAudio);
+            console.log('Energy features extracted:', energy);
             
             const features = {
-                fundamental: await this.extractF0(decodedAudio),
-                formants: await this.extractFormants(decodedAudio),
-                spectral: await this.extractSpectralFeatures(decodedAudio),
-                temporal: await this.extractTemporalFeatures(decodedAudio),
-                energy: await this.extractEnergyFeatures(decodedAudio)
+                fundamental,
+                formants,
+                spectral,
+                temporal,
+                energy
             };
-
+            
+            console.log('All acoustic features extracted successfully:', features);
             return features;
         } catch (error) {
-            console.error('Audio feature extraction failed:', error);
+            console.error('Audio feature extraction failed at step:', error.message);
+            console.error('Full error:', error);
+            console.error('Stack trace:', error.stack);
             return this.getFallbackFeatures();
         }
     }
