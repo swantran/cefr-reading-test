@@ -1,7 +1,7 @@
 // Service Worker for offline functionality
-const CACHE_NAME = 'cefr-reading-test-v1.0.0';
-const STATIC_CACHE = 'static-v1.0.0';
-const DYNAMIC_CACHE = 'dynamic-v1.0.0';
+const CACHE_NAME = 'cefr-reading-test-v1.1.0-phonetic-debug';
+const STATIC_CACHE = 'static-v1.1.0-phonetic-debug';
+const DYNAMIC_CACHE = 'dynamic-v1.1.0-phonetic-debug';
 
 // Files to cache for offline use
 const STATIC_FILES = [
