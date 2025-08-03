@@ -7,7 +7,6 @@ import { CEFR_LEVELS } from './cefrData.js';
 import { AnalyticsEngine } from './analytics.js';
 import { AnalyticsDashboard } from './analyticsUI.js';
 import { AdaptiveTestingEngine } from './adaptiveTesting.js';
-import { ExemplarAudioManager } from './exemplarAudio.js';
 import { AudioVisualizer } from './audioVisualizer.js';
 import { PhoneticAnalysisEngine } from './phoneticAnalysis.js';
 import { PronunciationExerciseGenerator } from './pronunciationExercises.js';
@@ -21,7 +20,6 @@ class CEFRReadingTest {
         this.analytics = new AnalyticsEngine(this.storage);
         this.analyticsDashboard = null;
         this.adaptiveTesting = new AdaptiveTestingEngine(this.storage);
-        this.exemplarAudio = new ExemplarAudioManager();
         this.phoneticAnalysis = new PhoneticAnalysisEngine();
         this.audioVisualizer = new AudioVisualizer();
         this.exerciseGenerator = new PronunciationExerciseGenerator();
@@ -30,6 +28,7 @@ class CEFRReadingTest {
         this.currentSentenceIndex = 0;
         this.isRecording = false;
         this.timer = null;
+        this.autoStopTimer = null;
         this.recordingStartTime = null;
         this.isInitialized = false;
         this.settings = this.storage.getSettings();
@@ -54,11 +53,6 @@ class CEFRReadingTest {
                 this.analyticsDashboard = new AnalyticsDashboard(this.analytics, analyticsContainer);
             }
             
-            // Preload exemplar audio for current level (non-blocking)
-            if (this.currentLevel) {
-                this.exemplarAudio.preloadExemplarsForLevel(this.currentLevel)
-                    .catch(error => console.log('Non-critical: exemplar preload failed', error));
-            }
             
             // Check API health once (non-blocking)
             console.log('Checking API health once...');
@@ -145,24 +139,6 @@ class CEFRReadingTest {
                 return;
             }
             
-            // Exemplar audio controls
-            const playExemplarBtn = e.target.closest('#playExemplarBtn');
-            if (playExemplarBtn) {
-                console.log('Play exemplar button clicked!');
-                e.preventDefault();
-                e.stopPropagation();
-                this.playExemplarAudio();
-                return;
-            }
-            
-            const compareBtn = e.target.closest('#compareBtn');
-            if (compareBtn) {
-                console.log('Compare button clicked!');
-                e.preventDefault();
-                e.stopPropagation();
-                this.compareWithExemplar();
-                return;
-            }
         });
 
         // Keyboard shortcuts
@@ -384,22 +360,35 @@ class CEFRReadingTest {
         if (!container) return;
 
         const assignedLevel = this.adaptiveTesting.getAssignedLevel();
+        const levels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+        const currentLevelIndex = levels.indexOf(assignedLevel);
+        
+        // Only show assigned level and next level (if exists)
+        const availableLevels = [assignedLevel];
+        if (currentLevelIndex < levels.length - 1) {
+            availableLevels.push(levels[currentLevelIndex + 1]);
+        }
+        
         const html = `
             <div class="level-selector-content">
                 <div class="placement-results">
                     <h3>📊 Your CEFR Level: <span class="assigned-level">${assignedLevel}</span></h3>
-                    <p>Based on your placement test, you've been assigned to ${assignedLevel} level. You can now practice at any level or continue with recommended content.</p>
+                    <p>Based on your placement test, you've been assigned to ${assignedLevel} level. Practice at your level to improve, or try the next level when ready.</p>
                 </div>
                 
-                <h4>Practice Mode - Choose Your Level</h4>
+                <h4>Practice Mode - Your Available Levels</h4>
                 <div class="level-grid">
-                    ${Object.entries(CEFR_LEVELS).map(([level, data]) => `
-                        <div class="level-card ${level === this.currentLevel ? 'active' : ''} ${level === assignedLevel ? 'recommended' : ''}" 
+                    ${availableLevels.map(level => {
+                        const data = CEFR_LEVELS[level];
+                        const isAssigned = level === assignedLevel;
+                        const isNext = level === levels[currentLevelIndex + 1];
+                        return `
+                        <div class="level-card ${level === this.currentLevel ? 'active' : ''} ${isAssigned ? 'recommended' : ''} ${isNext ? 'next-level' : ''}" 
                              data-level="${level}" 
                              tabindex="0"
                              role="button"
                              aria-pressed="${level === this.currentLevel}">
-                            <h4>${level} - ${data.name} ${level === assignedLevel ? '⭐' : ''}</h4>
+                            <h4>${level} - ${data.name} ${isAssigned ? '⭐ Your Level' : isNext ? '🎯 Next Challenge' : ''}</h4>
                             <p>${data.description}</p>
                             ${level === assignedLevel ? '<span class="recommended-badge">Recommended</span>' : ''}
                         </div>
@@ -503,25 +492,6 @@ class CEFRReadingTest {
                 </div>
             ` : ''}
 
-            <!-- Exemplar Audio Controls -->
-            <div class="exemplar-controls" id="exemplarControls">
-                <div class="exemplar-header">
-                    <h4>📖 Listen to Perfect Pronunciation</h4>
-                    <p>Hear how this sentence should be pronounced by a native speaker</p>
-                </div>
-                <div class="exemplar-actions">
-                    <button type="button" class="btn btn-secondary" id="playExemplarBtn">
-                        <span>🔊</span> Play Exemplar
-                    </button>
-                    <button type="button" class="btn btn-secondary" id="compareBtn" style="display: none;">
-                        <span>⚖️</span> Compare with My Recording
-                    </button>
-                    <div class="exemplar-info" id="exemplarInfo" style="display: none;">
-                        <span class="voice-info"></span>
-                        <span class="quality-badge"></span>
-                    </div>
-                </div>
-            </div>
 
             <div class="controls">
                 <button type="button" class="btn" id="startBtn" aria-describedby="startBtnDesc">
@@ -740,6 +710,23 @@ class CEFRReadingTest {
             return;
         }
 
+        // Validate that the selected level is available to the user
+        const assignedLevel = this.adaptiveTesting.getAssignedLevel();
+        const levels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+        const assignedLevelIndex = levels.indexOf(assignedLevel);
+        const selectedLevelIndex = levels.indexOf(level);
+        
+        // Only allow assigned level and the next level
+        if (selectedLevelIndex > assignedLevelIndex + 1) {
+            this.showNotification(`Level ${level} is not yet available. Complete ${levels[assignedLevelIndex + 1] || assignedLevel} level first.`, 'warning');
+            return;
+        }
+        
+        if (selectedLevelIndex < assignedLevelIndex) {
+            this.showNotification(`You've already been placed at ${assignedLevel} level. Practice at your current level or try the next challenge.`, 'info');
+            return;
+        }
+
         this.currentLevel = level;
         this.currentSentenceIndex = 0;
         this.testMode = 'practice';
@@ -748,11 +735,6 @@ class CEFRReadingTest {
         this.renderTestArea();
         this.hideResults();
         
-        // Preload exemplar audio for new level (non-blocking)
-        if (level !== 'CUSTOM') {
-            this.exemplarAudio.preloadExemplarsForLevel(level)
-                .catch(error => console.log('Non-critical: exemplar preload failed', error));
-        }
         
         // Update URL without page reload
         history.pushState({ level }, '', `?level=${level}`);
@@ -785,9 +767,22 @@ class CEFRReadingTest {
             this.updateRecordingState(true);
             this.startTimer();
             
+            // Set up auto-stop timer based on sentence ideal duration with 10% buffer
+            const levelData = CEFR_LEVELS[this.currentLevel];
+            const sentence = levelData.sentences[this.currentSentenceIndex];
+            const autoStopDuration = Math.ceil(sentence.idealDuration * 1.1 * 1000); // 10% buffer, convert to ms
+            
+            this.autoStopTimer = setTimeout(() => {
+                if (this.isRecording) {
+                    console.log(`Auto-stopping recording after ${autoStopDuration/1000}s (${sentence.idealDuration}s + 10% buffer)`);
+                    this.stopRecording();
+                    this.showNotification(`Recording automatically stopped after ${(autoStopDuration/1000).toFixed(1)}s`, 'info');
+                }
+            }, autoStopDuration);
+            
             // Announce to screen readers
-            this.announceToScreenReader('Recording started');
-            console.log('Recording started successfully');
+            this.announceToScreenReader(`Recording started - will auto-stop in ${(autoStopDuration/1000).toFixed(1)} seconds`);
+            console.log(`Recording started successfully - will auto-stop in ${autoStopDuration/1000}s`);
             
         } catch (error) {
             console.error('Recording failed:', error);
@@ -809,6 +804,12 @@ class CEFRReadingTest {
             this.isRecording = false;
             this.updateRecordingState(false);
             this.stopTimer();
+            
+            // Clear auto-stop timer if it exists
+            if (this.autoStopTimer) {
+                clearTimeout(this.autoStopTimer);
+                this.autoStopTimer = null;
+            }
             
             // Show loading state
             this.showLoading(true);
@@ -1179,162 +1180,8 @@ class CEFRReadingTest {
         }
     }
 
-    async playExemplarAudio() {
-        const playBtn = document.getElementById('playExemplarBtn');
-        const exemplarInfo = document.getElementById('exemplarInfo');
-        
-        if (!playBtn) return;
-        
-        // Get current sentence
-        const levelData = CEFR_LEVELS[this.currentLevel];
-        const sentence = levelData.sentences[this.currentSentenceIndex];
-        
-        // Disable button and show loading
-        playBtn.disabled = true;
-        const originalContent = playBtn.innerHTML;
-        playBtn.innerHTML = '<span class="spinner"></span> Loading...';
-        
-        try {
-            const result = await this.exemplarAudio.playExemplar(sentence.text, this.currentLevel);
-            
-            if (result.success) {
-                // Show exemplar info
-                if (exemplarInfo) {
-                    const voiceInfo = exemplarInfo.querySelector('.voice-info');
-                    const qualityBadge = exemplarInfo.querySelector('.quality-badge');
-                    
-                    if (voiceInfo) {
-                        voiceInfo.textContent = `Voice: ${this.exemplarAudio.selectedVoice?.name || 'System Default'}`;
-                    }
-                    
-                    if (qualityBadge) {
-                        qualityBadge.textContent = result.type === 'recorded' ? 'Professional' : 'Synthetic';
-                        qualityBadge.className = `quality-badge ${result.type}`;
-                    }
-                    
-                    exemplarInfo.style.display = 'block';
-                }
-                
-                // Show comparison button if user has recorded
-                const compareBtn = document.getElementById('compareBtn');
-                const audioPlayer = document.getElementById('audioPlayer');
-                if (compareBtn && audioPlayer && audioPlayer.src) {
-                    compareBtn.style.display = 'inline-flex';
-                }
-                
-                this.showNotification(result.message, 'success');
-            } else {
-                this.showNotification(result.message || 'Could not play exemplar audio', 'error');
-            }
-        } catch (error) {
-            console.error('Error playing exemplar:', error);
-            this.showNotification('Error playing exemplar audio', 'error');
-        } finally {
-            // Restore button
-            playBtn.disabled = false;
-            playBtn.innerHTML = originalContent;
-        }
-    }
 
-    async compareWithExemplar() {
-        const compareBtn = document.getElementById('compareBtn');
-        const audioPlayer = document.getElementById('audioPlayer');
-        
-        if (!compareBtn || !audioPlayer || !audioPlayer.src) {
-            this.showNotification('No recording available for comparison', 'warning');
-            return;
-        }
-        
-        // Get current sentence
-        const levelData = CEFR_LEVELS[this.currentLevel];
-        const sentence = levelData.sentences[this.currentSentenceIndex];
-        
-        // Disable button and show loading
-        compareBtn.disabled = true;
-        const originalContent = compareBtn.innerHTML;
-        compareBtn.innerHTML = '<span class="spinner"></span> Comparing...';
-        
-        try {
-            // This would use the user's audio data for comparison
-            // For now, we'll show a comparison interface
-            const result = await this.exemplarAudio.compareWithExemplar(
-                null, // userAudio - would need actual audio data
-                sentence.text,
-                this.currentLevel
-            );
-            
-            if (result.success) {
-                this.showComparisonResults(result);
-            } else {
-                this.showNotification(result.message, 'error');
-            }
-        } catch (error) {
-            console.error('Error comparing with exemplar:', error);
-            this.showNotification('Error comparing with exemplar', 'error');
-        } finally {
-            // Restore button
-            compareBtn.disabled = false;
-            compareBtn.innerHTML = originalContent;
-        }
-    }
 
-    showComparisonResults(comparisonData) {
-        const container = document.getElementById('results');
-        if (!container) return;
-        
-        const html = `
-            <div class="comparison-results">
-                <h3>📊 Pronunciation Comparison</h3>
-                <div class="exemplar-info">
-                    <h4>Reference Audio</h4>
-                    <p>Text: "${comparisonData.exemplar.text}"</p>
-                    <p>Level: ${comparisonData.exemplar.level}</p>
-                    <p>Type: ${comparisonData.exemplar.type === 'recorded' ? 'Professional Recording' : 'Synthetic Voice'}</p>
-                </div>
-                
-                <div class="comparison-metrics">
-                    <h4>Comparison Analysis</h4>
-                    <div class="metric-grid">
-                        <div class="metric-item">
-                            <span class="metric-label">Tempo Similarity</span>
-                            <span class="metric-value">${comparisonData.comparison.tempoSimilarity}%</span>
-                        </div>
-                        <div class="metric-item">
-                            <span class="metric-label">Pronunciation Match</span>
-                            <span class="metric-value">${comparisonData.comparison.pronunciationMatch}%</span>
-                        </div>
-                        <div class="metric-item">
-                            <span class="metric-label">Rhythm Alignment</span>
-                            <span class="metric-value">${comparisonData.comparison.rhythmAlignment}%</span>
-                        </div>
-                        <div class="metric-item">
-                            <span class="metric-label">Overall Similarity</span>
-                            <span class="metric-value overall">${comparisonData.comparison.overallSimilarity}%</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="recommendations">
-                    <h4>💡 Recommendations</h4>
-                    <ul>
-                        ${comparisonData.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-                    </ul>
-                </div>
-                
-                <div class="audio-controls">
-                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('audioPlayer').play()">
-                        <span>🔊</span> Play My Recording
-                    </button>
-                    <button type="button" class="btn btn-secondary" onclick="window.cefrApp.playExemplarAudio()">
-                        <span>🎯</span> Play Exemplar Again
-                    </button>
-                </div>
-            </div>
-        `;
-        
-        container.innerHTML = html;
-        container.classList.add('show');
-    }
 
     showLoading(show) {
         const indicator = document.getElementById('loadingIndicator');
@@ -1711,10 +1558,17 @@ class CEFRReadingTest {
     }
 
     renderPronunciationExercises(phoneticData) {
-        if (!phoneticData) return '';
+        if (!phoneticData) {
+            console.log('🎯 No phonetic data provided for exercise generation');
+            return '';
+        }
+        
+        console.log('🎯 Generating exercises from phonetic data:', phoneticData);
         
         // Generate exercises based on phonetic analysis
         const exerciseData = this.exerciseGenerator.generateExercises(phoneticData, this.currentLevel);
+        
+        console.log('🎯 Exercise data generated:', exerciseData);
         
         if (!exerciseData.exercises || exerciseData.exercises.length === 0) {
             return `
