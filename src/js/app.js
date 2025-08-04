@@ -393,7 +393,8 @@ class CEFRReadingTest {
                             <p>${data.description}</p>
                             ${level === assignedLevel ? '<span class="recommended-badge">Recommended</span>' : ''}
                         </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </div>
             </div>
         `;
