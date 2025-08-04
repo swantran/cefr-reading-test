@@ -794,6 +794,41 @@ class CEFRReadingTest {
         }
     }
 
+    async detectSilence(audioBlob) {
+        try {
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            // Get audio data from first channel
+            const channelData = audioBuffer.getChannelData(0);
+            
+            // Calculate RMS (Root Mean Square) energy
+            let sum = 0;
+            for (let i = 0; i < channelData.length; i++) {
+                sum += channelData[i] * channelData[i];
+            }
+            const rms = Math.sqrt(sum / channelData.length);
+            
+            // Convert to decibels
+            const db = 20 * Math.log10(rms);
+            
+            console.log('Audio analysis:', { rms, db, samples: channelData.length });
+            
+            // Consider it silence if RMS is very low or dB is below threshold
+            // Threshold: -40dB is very quiet speech, -60dB is effective silence
+            const silenceThreshold = -45; // dB
+            const isSilent = db < silenceThreshold || rms < 0.001;
+            
+            audioContext.close();
+            
+            return isSilent;
+        } catch (error) {
+            console.warn('Silence detection failed:', error);
+            return false; // If we can't detect, assume there's audio
+        }
+    }
+
     async stopRecording() {
         console.log('Stop recording called, isRecording:', this.isRecording);
         
@@ -825,6 +860,14 @@ class CEFRReadingTest {
             
             if (!audioData || !audioData.duration) {
                 throw new Error('No audio data available or invalid recording');
+            }
+            
+            // Check for silence - analyze audio energy
+            const isSilent = await this.detectSilence(audioData.blob);
+            if (isSilent) {
+                this.showNotification('No speech detected. Please speak clearly and try again.', 'warning');
+                this.showLoading(false);
+                return; // Exit early, no analysis needed
             }
             
             const duration = audioData.duration;
@@ -1503,8 +1546,20 @@ class CEFRReadingTest {
                     
                     <div class="visualization-content">
                         <div class="viz-panel active" id="waveform-panel">
-                            <canvas id="waveformCanvas" width="600" height="200"></canvas>
+                            <div class="waveform-comparison">
+                                <div class="waveform-section">
+                                    <h6>🎯 Target Pronunciation</h6>
+                                    <canvas id="exemplarWaveformCanvas" width="600" height="120"></canvas>
+                                </div>
+                                <div class="waveform-section">
+                                    <h6>🎤 Your Pronunciation</h6>
+                                    <canvas id="waveformCanvas" width="600" height="120"></canvas>
+                                </div>
+                            </div>
                             <div class="legend">
+                                <span class="legend-item">
+                                    <span class="color-box exemplar"></span>Target Pronunciation
+                                </span>
                                 <span class="legend-item">
                                     <span class="color-box user"></span>Your Pronunciation
                                 </span>
@@ -1833,6 +1888,7 @@ class CEFRReadingTest {
     }
 
     async renderWaveform() {
+        // Render user's waveform
         if (!this.audioVisualizer.setCanvas('waveformCanvas')) {
             console.error('Cannot set waveform canvas');
             return;
@@ -1846,8 +1902,37 @@ class CEFRReadingTest {
         });
 
         if (!success) {
-            console.error('Failed to draw waveform');
+            console.error('Failed to draw user waveform');
         }
+
+        // Render exemplar waveform
+        try {
+            await this.renderExemplarWaveform();
+        } catch (error) {
+            console.error('Error drawing exemplar waveform:', error);
+        }
+    }
+
+    async renderExemplarWaveform() {
+        // Generate exemplar waveform based on current sentence
+        const levelData = CEFR_LEVELS[this.currentLevel];
+        const sentence = levelData.sentences[this.currentSentenceIndex];
+        
+        console.log('Generating exemplar waveform for:', sentence.text);
+        
+        // Set canvas for exemplar waveform
+        if (!this.audioVisualizer.setCanvas('exemplarWaveformCanvas')) {
+            console.error('Cannot set exemplar waveform canvas');
+            return;
+        }
+
+        // Generate synthetic exemplar waveform based on sentence characteristics
+        await this.audioVisualizer.drawExemplarWaveform(sentence, {
+            color: '#28a745',
+            lineWidth: 2,
+            showGrid: true,
+            showTimeLabels: true
+        });
     }
 
     async renderSpectrogram() {
