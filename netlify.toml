@@ -1,5 +1,5 @@
 [build]
-  publish = "deploy"
+  publish = "."
   command = "echo 'No build command needed'"
 
 [[headers]]
