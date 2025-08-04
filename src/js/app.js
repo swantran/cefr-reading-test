@@ -334,7 +334,8 @@ class CEFRReadingTest {
             case 'Focus on completeness exercises':
             case 'Focus on clarity exercises':
                 this.switchView('test');
-                this.showNotification(`Switched to practice mode. Focus on ${action.split(' ')[2]} during your next test.`, 'info');
+                const focusArea = action.split(' ')[2] || 'skills';
+                this.showNotification(`Switched to practice mode. Focus on ${focusArea} during your next test.`, 'info');
                 break;
             default:
                 console.log('Unhandled analytics action:', action);
