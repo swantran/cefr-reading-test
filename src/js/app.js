@@ -169,6 +169,15 @@ class CEFRReadingTest {
                 return;
             }
             
+            // Practice exercise button
+            const practiceBtn = e.target.closest('.start-exercise');
+            if (practiceBtn) {
+                e.preventDefault();
+                const exerciseId = practiceBtn.dataset.exerciseId;
+                this.startPracticeExercise(exerciseId);
+                return;
+            }
+            
             // Navigation buttons
             const navBtn = e.target.closest('.nav-btn');
             if (navBtn) {
@@ -1137,6 +1146,344 @@ class CEFRReadingTest {
         this.hideResults();
         
         this.showNotification(`Practice mode activated! Starting at your assigned ${assignedLevel} level.`, 'success');
+    }
+
+    async startPracticeExercise(exerciseId) {
+        try {
+            // Get the current exercise data
+            const currentExercises = this.exerciseGenerator.getExercisesForLevel(this.currentLevel);
+            const exercise = currentExercises.exercises[exerciseId];
+            
+            if (!exercise) {
+                this.showNotification('Exercise not found.', 'error');
+                return;
+            }
+
+            // Switch to practice page
+            this.showPracticePage(exercise, exerciseId);
+            
+        } catch (error) {
+            console.error('Error starting practice exercise:', error);
+            this.showNotification('Failed to start practice exercise.', 'error');
+        }
+    }
+
+    showPracticePage(exercise, exerciseId) {
+        // Create practice page content
+        const practiceHTML = `
+            <div class="practice-page">
+                <div class="practice-header">
+                    <button class="btn btn-secondary back-to-results" id="backToResults">
+                        ← Back to Results
+                    </button>
+                    <h2>🎯 Pronunciation Practice</h2>
+                    <div class="exercise-info">
+                        <span class="exercise-type">${exercise.type}</span>
+                        <span class="exercise-level">Level: ${this.currentLevel}</span>
+                    </div>
+                </div>
+
+                <div class="practice-content">
+                    <div class="exercise-details">
+                        <h3>${exercise.title}</h3>
+                        <p class="instructions">${exercise.instructions}</p>
+                    </div>
+
+                    <div class="practice-sections">
+                        ${this.renderPracticeSections(exercise)}
+                    </div>
+
+                    <div class="practice-controls">
+                        <div class="recording-section">
+                            <button class="btn btn-primary" id="practiceRecordBtn">
+                                🎤 Start Recording
+                            </button>
+                            <button class="btn btn-secondary" id="practicePlaybackBtn" style="display: none;">
+                                ▶️ Play Recording
+                            </button>
+                        </div>
+                        
+                        <div class="practice-waveform">
+                            <canvas id="practiceWaveform" width="600" height="150"></canvas>
+                        </div>
+                        
+                        <div class="practice-feedback" id="practiceFeedback" style="display: none;">
+                            <!-- Feedback will be shown here -->
+                        </div>
+                    </div>
+
+                    <div class="practice-navigation">
+                        <button class="btn btn-success" id="completePractice">
+                            ✅ Complete Practice
+                        </button>
+                        <button class="btn btn-outline-primary" id="nextExercise" style="display: none;">
+                            Next Exercise →
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Replace main content with practice page
+        const mainContent = document.querySelector('.main-content');
+        if (mainContent) {
+            mainContent.innerHTML = practiceHTML;
+            
+            // Add event listeners for practice page
+            this.addPracticeEventListeners(exercise, exerciseId);
+        }
+    }
+
+    renderPracticeSections(exercise) {
+        let sectionsHTML = '';
+
+        // Minimal pairs section
+        if (exercise.minimalPairs && exercise.minimalPairs.length > 0) {
+            sectionsHTML += `
+                <div class="practice-section">
+                    <h4>🔀 Minimal Pairs Practice</h4>
+                    <div class="minimal-pairs-grid">
+                        ${exercise.minimalPairs.map(pair => `
+                            <div class="pair-item">
+                                <span class="word-a">${pair.word1}</span>
+                                <span class="vs">vs</span>
+                                <span class="word-b">${pair.word2}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <p class="practice-tip">Practice distinguishing between these similar sounds.</p>
+                </div>
+            `;
+        }
+
+        // Isolation practice section
+        if (exercise.isolationWords && exercise.isolationWords.length > 0) {
+            sectionsHTML += `
+                <div class="practice-section">
+                    <h4>🎯 Isolation Practice</h4>
+                    <div class="isolation-words">
+                        ${exercise.isolationWords.map(word => `
+                            <span class="practice-word">${word}</span>
+                        `).join('')}
+                    </div>
+                    <p class="practice-tip">Practice each word clearly and distinctly.</p>
+                </div>
+            `;
+        }
+
+        // Sentence practice section
+        if (exercise.sentences && exercise.sentences.length > 0) {
+            sectionsHTML += `
+                <div class="practice-section">
+                    <h4>💬 Sentence Practice</h4>
+                    <div class="practice-sentences">
+                        ${exercise.sentences.map(sentence => `
+                            <div class="practice-sentence">"${sentence}"</div>
+                        `).join('')}
+                    </div>
+                    <p class="practice-tip">Focus on natural rhythm and intonation.</p>
+                </div>
+            `;
+        }
+
+        // Articulation exercises
+        if (exercise.articulationExercises && exercise.articulationExercises.length > 0) {
+            sectionsHTML += `
+                <div class="practice-section">
+                    <h4>👄 Articulation Exercises</h4>
+                    <div class="articulation-exercises">
+                        ${exercise.articulationExercises.map(word => `
+                            <span class="practice-word">${word}</span>
+                        `).join('')}
+                    </div>
+                    <p class="practice-tip">Focus on precise tongue and lip movements.</p>
+                </div>
+            `;
+        }
+
+        return sectionsHTML;
+    }
+
+    addPracticeEventListeners(exercise, exerciseId) {
+        let isRecording = false;
+        let currentRecording = null;
+        
+        // Back button
+        const backBtn = document.getElementById('backToResults');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this.hidePracticePage();
+            });
+        }
+
+        // Recording button
+        const recordBtn = document.getElementById('practiceRecordBtn');
+        if (recordBtn) {
+            recordBtn.addEventListener('click', async () => {
+                if (isRecording) {
+                    // Stop recording
+                    try {
+                        const audioBlob = await this.stopRecording();
+                        currentRecording = audioBlob;
+                        
+                        // Show playback button and analyze
+                        document.getElementById('practicePlaybackBtn').style.display = 'inline-block';
+                        this.analyzePracticeRecording(audioBlob, exercise);
+                        
+                        recordBtn.textContent = '🎤 Record Again';
+                        isRecording = false;
+                    } catch (error) {
+                        console.error('Error stopping recording:', error);
+                    }
+                } else {
+                    // Start recording
+                    try {
+                        await this.startRecording();
+                        recordBtn.textContent = '⏹️ Stop Recording';
+                        isRecording = true;
+                        
+                        // Clear previous feedback
+                        document.getElementById('practiceFeedback').style.display = 'none';
+                    } catch (error) {
+                        console.error('Error starting recording:', error);
+                        this.showNotification('Failed to start recording.', 'error');
+                    }
+                }
+            });
+        }
+
+        // Playback button
+        const playbackBtn = document.getElementById('practicePlaybackBtn');
+        if (playbackBtn) {
+            playbackBtn.addEventListener('click', () => {
+                if (currentRecording) {
+                    this.playAudioBlob(currentRecording);
+                }
+            });
+        }
+
+        // Complete practice button
+        const completeBtn = document.getElementById('completePractice');
+        if (completeBtn) {
+            completeBtn.addEventListener('click', () => {
+                this.completePracticeExercise(exerciseId);
+            });
+        }
+    }
+
+    async analyzePracticeRecording(audioBlob, exercise) {
+        const feedbackDiv = document.getElementById('practiceFeedback');
+        
+        try {
+            // Check for silence first
+            const isSilent = await this.detectSilence(audioBlob);
+            if (isSilent) {
+                feedbackDiv.innerHTML = `
+                    <div class="alert alert-warning">
+                        <h5>⚠️ No Speech Detected</h5>
+                        <p>We couldn't detect any speech in your recording. Please try recording again and speak clearly.</p>
+                    </div>
+                `;
+                feedbackDiv.style.display = 'block';
+                return;
+            }
+
+            // Show waveform
+            const canvas = document.getElementById('practiceWaveform');
+            if (canvas && this.audioVisualizer) {
+                this.audioVisualizer.setCanvas('practiceWaveform');
+                await this.audioVisualizer.drawWaveform(audioBlob, {
+                    color: '#007bff',
+                    showGrid: true,
+                    showTimeLabels: true
+                });
+            }
+
+            // Simple feedback based on exercise type
+            const feedback = this.generatePracticeFeedback(exercise, audioBlob);
+            
+            feedbackDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <h5>📊 Practice Feedback</h5>
+                    ${feedback}
+                </div>
+            `;
+            feedbackDiv.style.display = 'block';
+
+        } catch (error) {
+            console.error('Error analyzing practice recording:', error);
+            feedbackDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <h5>❌ Analysis Error</h5>
+                    <p>Unable to analyze your recording. Please try again.</p>
+                </div>
+            `;
+            feedbackDiv.style.display = 'block';
+        }
+    }
+
+    generatePracticeFeedback(exercise, audioBlob) {
+        // Generate encouragement and tips based on exercise type
+        const feedbackMessages = {
+            'Vowel Sound Practice': [
+                'Great job practicing vowel sounds!',
+                'Focus on keeping your mouth position consistent.',
+                'Try to hold each vowel sound for 2-3 seconds.'
+            ],
+            'Consonant Cluster Practice': [
+                'Well done working on consonant clusters!',
+                'Remember to pronounce each consonant clearly.',
+                'Practice slowly at first, then increase speed.'
+            ],
+            'Word Stress Practice': [
+                'Excellent stress pattern practice!',
+                'Make sure stressed syllables are longer and louder.',
+                'Practice with a steady rhythm.'
+            ],
+            'Intonation Practice': [
+                'Nice work on intonation patterns!',
+                'Remember that questions usually rise at the end.',
+                'Statements typically fall at the end.'
+            ]
+        };
+
+        const messages = feedbackMessages[exercise.type] || [
+            'Great pronunciation practice!',
+            'Keep practicing regularly for best results.',
+            'Focus on clarity and natural rhythm.'
+        ];
+
+        return `
+            <p><strong>${messages[0]}</strong></p>
+            <ul>
+                <li>${messages[1]}</li>
+                <li>${messages[2]}</li>
+            </ul>
+            <p><em>Tip: Record yourself multiple times and compare your progress!</em></p>
+        `;
+    }
+
+    completePracticeExercise(exerciseId) {
+        // Mark exercise as completed (you could save this to localStorage)
+        this.showNotification('Practice completed! Great job!', 'success');
+        
+        // Return to results page
+        setTimeout(() => {
+            this.hidePracticePage();
+        }, 1500);
+    }
+
+    hidePracticePage() {
+        // Return to the main results view
+        this.renderMainContent();
+        
+        // Re-show the pronunciation exercises section
+        setTimeout(() => {
+            const pronunciationSection = document.querySelector('.pronunciation-exercises');
+            if (pronunciationSection) {
+                pronunciationSection.scrollIntoView({ behavior: 'smooth' });
+            }
+        }, 100);
     }
 
     retryCurrentSentence() {

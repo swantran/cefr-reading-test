@@ -2216,7 +2216,28 @@ body {
     background: white;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     display: block;
-    margin: 0 auto 1rem;
+}
+
+/* Waveform comparison layout */
+.waveform-comparison {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.waveform-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.waveform-section h6 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: center;
 }
 
 .legend {
@@ -2249,6 +2270,10 @@ body {
 }
 
 .color-box.target {
+    background-color: #28a745;
+}
+
+.color-box.exemplar {
     background-color: #28a745;
 }
 
@@ -2417,5 +2442,240 @@ body {
     .viz-controls {
         flex-direction: column;
         width: 100%;
+    }
+}
+
+/* === PRACTICE PAGE STYLES === */
+
+.practice-page {
+    padding: 2rem;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.practice-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--border-light);
+}
+
+.practice-header h2 {
+    margin: 0;
+    color: var(--primary-color);
+}
+
+.exercise-info {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.exercise-type {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.4rem 0.8rem;
+    border-radius: var(--border-radius);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.exercise-level {
+    background: var(--bg-secondary);
+    padding: 0.4rem 0.8rem;
+    border-radius: var(--border-radius);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.practice-content {
+    display: grid;
+    gap: 2rem;
+}
+
+.exercise-details {
+    background: var(--bg-primary);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+}
+
+.exercise-details h3 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+}
+
+.exercise-details .instructions {
+    margin: 0;
+    color: var(--text-secondary);
+    font-style: italic;
+    line-height: 1.6;
+}
+
+.practice-sections {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.practice-section {
+    background: var(--bg-primary);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--primary-color);
+}
+
+.practice-section h4 {
+    margin: 0 0 1rem 0;
+    color: var(--primary-color);
+    font-size: 1.1rem;
+}
+
+.minimal-pairs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.pair-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.8rem;
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    font-weight: 600;
+}
+
+.word-a, .word-b {
+    color: var(--primary-color);
+    font-size: 1.1rem;
+}
+
+.vs {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.isolation-words, .articulation-exercises {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+}
+
+.practice-word {
+    background: var(--success-color);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.practice-sentences {
+    display: grid;
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+}
+
+.practice-sentence {
+    background: var(--bg-secondary);
+    padding: 1rem;
+    border-radius: var(--border-radius);
+    border-left: 3px solid var(--success-color);
+    font-style: italic;
+    line-height: 1.6;
+}
+
+.practice-tip {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
+.practice-controls {
+    background: var(--bg-primary);
+    padding: 2rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+    text-align: center;
+}
+
+.recording-section {
+    margin-bottom: 2rem;
+}
+
+.recording-section .btn {
+    margin: 0 0.5rem;
+}
+
+.practice-waveform {
+    background: var(--bg-secondary);
+    padding: 1rem;
+    border-radius: var(--border-radius);
+    margin-bottom: 2rem;
+    display: flex;
+    justify-content: center;
+}
+
+.practice-waveform canvas {
+    border-radius: var(--border-radius);
+    background: white;
+}
+
+.practice-feedback {
+    text-align: left;
+    margin-bottom: 2rem;
+}
+
+.practice-navigation {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-light);
+}
+
+/* Practice page responsive design */
+@media (max-width: 768px) {
+    .practice-page {
+        padding: 1rem;
+    }
+    
+    .practice-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .exercise-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .minimal-pairs-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .practice-navigation {
+        flex-direction: column;
+    }
+    
+    .recording-section .btn {
+        display: block;
+        margin: 0.5rem 0;
+        width: 100%;
+    }
+    
+    .practice-waveform canvas {
+        width: 100%;
+        height: 120px;
     }
 }

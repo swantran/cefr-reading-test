@@ -617,6 +617,252 @@ export class AudioVisualizer {
         this.ctx.fillText('F2 (Hz)', padding + width / 2, this.canvas.height - 10);
     }
 
+    // === EXEMPLAR WAVEFORM GENERATION ===
+    
+    async drawExemplarWaveform(sentence, options = {}) {
+        if (!this.ctx) return false;
+
+        const {
+            color = '#28a745',
+            lineWidth = 2,
+            showGrid = true,
+            showTimeLabels = true
+        } = options;
+
+        try {
+            // Clear canvas
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            
+            // Draw background grid if enabled
+            if (showGrid) {
+                this.drawGrid();
+            }
+
+            // Generate synthetic waveform based on sentence characteristics
+            this.renderExemplarWaveform(sentence, color, lineWidth);
+            
+            // Add time labels if enabled
+            if (showTimeLabels) {
+                this.drawTimeLabels(sentence.idealDuration);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Error drawing exemplar waveform:', error);
+            return false;
+        }
+    }
+
+    renderExemplarWaveform(sentence, color, lineWidth) {
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+        const centerY = height / 2;
+        const duration = sentence.idealDuration;
+        
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = lineWidth;
+        this.ctx.lineCap = 'round';
+        
+        // Generate waveform based on sentence characteristics
+        const words = sentence.text.toLowerCase().split(' ');
+        const syllables = this.estimateSyllables(sentence.text);
+        const amplitude = (height / 2) * 0.6; // Use 60% of available height for exemplar
+        
+        this.ctx.beginPath();
+        
+        // Generate waveform pattern based on text analysis
+        for (let x = 0; x < width; x++) {
+            const timeProgress = x / width; // 0 to 1
+            const currentTime = timeProgress * duration;
+            
+            // Create waveform based on phonetic patterns
+            let waveValue = this.generatePhoneticWaveform(
+                currentTime, 
+                duration, 
+                words, 
+                syllables,
+                sentence.text
+            );
+            
+            // Add natural speech variations
+            waveValue += this.addSpeechVariations(currentTime, duration, timeProgress);
+            
+            const y = centerY - (waveValue * amplitude);
+            
+            if (x === 0) {
+                this.ctx.moveTo(x, y);
+            } else {
+                this.ctx.lineTo(x, y);
+            }
+        }
+        
+        this.ctx.stroke();
+        
+        // Add word boundaries as visual markers
+        this.drawWordBoundaries(words, duration, color);
+    }
+
+    generatePhoneticWaveform(currentTime, totalDuration, words, syllables, text) {
+        // Base frequency components for natural speech
+        const f1 = 2 * Math.PI * 120; // Fundamental frequency ~120Hz
+        const f2 = 2 * Math.PI * 240; // First harmonic
+        const f3 = 2 * Math.PI * 60;  // Sub-harmonic for rhythm
+        
+        // Calculate word timing
+        const wordDuration = totalDuration / words.length;
+        const currentWordIndex = Math.floor(currentTime / wordDuration);
+        const currentWord = words[currentWordIndex] || words[words.length - 1];
+        
+        // Base waveform with natural speech characteristics
+        let wave = 0;
+        
+        // Main speech signal
+        wave += 0.4 * Math.sin(f1 * currentTime);
+        wave += 0.2 * Math.sin(f2 * currentTime + Math.PI/4);
+        wave += 0.1 * Math.sin(f3 * currentTime);
+        
+        // Vowel emphasis - vowels have higher amplitude
+        const vowelFactor = this.getVowelIntensity(currentWord, currentTime % wordDuration, wordDuration);
+        wave *= (0.7 + 0.3 * vowelFactor);
+        
+        // Consonant patterns - some consonants create noise-like patterns
+        const consonantNoise = this.getConsonantNoise(currentWord, currentTime % wordDuration, wordDuration);
+        wave += 0.1 * consonantNoise;
+        
+        // Word stress patterns
+        const stressPattern = this.getWordStress(currentWordIndex, words.length, currentTime % wordDuration, wordDuration);
+        wave *= stressPattern;
+        
+        // Sentence-level prosody (intonation)
+        const prosody = this.getSentenceProsody(currentTime, totalDuration, text);
+        wave *= prosody;
+        
+        return Math.max(-1, Math.min(1, wave)); // Clamp to [-1, 1]
+    }
+
+    addSpeechVariations(currentTime, duration, progress) {
+        // Add natural speech variations and breathing patterns
+        let variation = 0;
+        
+        // Micro-variations in amplitude (natural voice tremor)
+        variation += 0.05 * Math.sin(2 * Math.PI * 8 * currentTime); // 8Hz tremor
+        
+        // Breathing pattern - slight reduction at regular intervals
+        const breathingCycle = 4; // 4-second breathing cycle
+        const breathPhase = (currentTime % breathingCycle) / breathingCycle;
+        if (breathPhase > 0.8) { // Slight dip for breathing
+            variation -= 0.1 * (breathPhase - 0.8) * 5;
+        }
+        
+        // Random micro-variations
+        variation += 0.02 * (Math.random() - 0.5);
+        
+        return variation;
+    }
+
+    getVowelIntensity(word, timeInWord, wordDuration) {
+        const vowels = ['a', 'e', 'i', 'o', 'u', 'y'];
+        const vowelPositions = [];
+        
+        // Find vowel positions in the word
+        for (let i = 0; i < word.length; i++) {
+            if (vowels.includes(word[i])) {
+                vowelPositions.push(i / word.length);
+            }
+        }
+        
+        if (vowelPositions.length === 0) return 0.5;
+        
+        const progressInWord = timeInWord / wordDuration;
+        
+        // Find closest vowel position
+        let minDistance = Infinity;
+        for (const vowelPos of vowelPositions) {
+            const distance = Math.abs(progressInWord - vowelPos);
+            if (distance < minDistance) {
+                minDistance = distance;
+            }
+        }
+        
+        // Vowel intensity peaks at vowel positions
+        return Math.max(0, 1 - minDistance * 4); // Peak intensity at vowels
+    }
+
+    getConsonantNoise(word, timeInWord, wordDuration) {
+        const noisyConsonants = ['s', 'sh', 'f', 'th', 'z', 'v'];
+        const progressInWord = timeInWord / wordDuration;
+        const letterIndex = Math.floor(progressInWord * word.length);
+        const currentLetter = word[letterIndex] || '';
+        
+        // Add noise for fricative consonants
+        if (noisyConsonants.some(cons => word.includes(cons))) {
+            return 0.3 * (Math.random() - 0.5);
+        }
+        
+        return 0.1 * (Math.random() - 0.5);
+    }
+
+    getWordStress(wordIndex, totalWords, timeInWord, wordDuration) {
+        // First and last words often get stress
+        if (wordIndex === 0 || wordIndex === totalWords - 1) {
+            return 1.2;
+        }
+        
+        // Content words (longer words) get more stress
+        // This is a simple approximation
+        const midWordTime = wordDuration / 2;
+        const distanceFromCenter = Math.abs(timeInWord - midWordTime);
+        const stressFactor = 1 + 0.3 * Math.cos(2 * Math.PI * distanceFromCenter / wordDuration);
+        
+        return stressFactor;
+    }
+
+    getSentenceProsody(currentTime, totalDuration, text) {
+        const progress = currentTime / totalDuration;
+        
+        // Question intonation - rising at the end
+        if (text.includes('?')) {
+            return 0.8 + 0.4 * progress;
+        }
+        
+        // Statement intonation - falling at the end
+        if (text.endsWith('.') || text.endsWith('!')) {
+            return 1.2 - 0.3 * Math.pow(progress, 2);
+        }
+        
+        // Default neutral prosody
+        return 1.0 + 0.2 * Math.sin(Math.PI * progress);
+    }
+
+    drawWordBoundaries(words, duration, color) {
+        const wordDuration = duration / words.length;
+        const height = this.canvas.height;
+        
+        this.ctx.strokeStyle = color;
+        this.ctx.globalAlpha = 0.3;
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([5, 5]);
+        
+        for (let i = 1; i < words.length; i++) {
+            const x = (i * wordDuration / duration) * this.canvas.width;
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, height * 0.1);
+            this.ctx.lineTo(x, height * 0.9);
+            this.ctx.stroke();
+        }
+        
+        // Reset line dash and alpha
+        this.ctx.setLineDash([]);
+        this.ctx.globalAlpha = 1.0;
+    }
+
+    estimateSyllables(text) {
+        // Simple syllable estimation based on vowel groups
+        const vowels = /[aeiouy]+/gi;
+        const matches = text.match(vowels);
+        return matches ? matches.length : 1;
+    }
+
     // === UTILITY METHODS ===
     
     clearCanvas() {
