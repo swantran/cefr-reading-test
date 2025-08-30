@@ -103,15 +103,6 @@ class CEFRReadingTest {
             }
             
             // Check other buttons using the same pattern
-            const stopBtn = e.target.closest('#stopBtn');
-            if (stopBtn) {
-                console.log('Stop button clicked!');
-                e.preventDefault();
-                e.stopPropagation();
-                this.stopRecording();
-                return;
-            }
-            
             const retryBtn = e.target.closest('#retryBtn');
             if (retryBtn) {
                 console.log('Retry button clicked!');
@@ -506,10 +497,7 @@ class CEFRReadingTest {
 
             <div class="controls">
                 <button type="button" class="btn" id="startBtn" aria-describedby="startBtnDesc">
-                    <span>🎤</span> Start Recording
-                </button>
-                <button type="button" class="btn btn-error" id="stopBtn" disabled aria-describedby="stopBtnDesc">
-                    <span>⏹</span> Stop Recording
+                    <span>🎤</span> Start Recording (Auto-Stop)
                 </button>
                 <button type="button" class="btn btn-secondary" id="retryBtn" style="display: none;">
                     <span>🔄</span> Retry
@@ -534,8 +522,7 @@ class CEFRReadingTest {
             </div>
 
             <!-- Accessibility descriptions -->
-            <div id="startBtnDesc" class="sr-only">Press spacebar or click to start recording your pronunciation</div>
-            <div id="stopBtnDesc" class="sr-only">Press spacebar or click to stop recording</div>
+            <div id="startBtnDesc" class="sr-only">Press spacebar or click to start recording - recording will automatically stop</div>
         `;
 
         container.innerHTML = html;
@@ -783,11 +770,14 @@ class CEFRReadingTest {
             const sentence = levelData.sentences[this.currentSentenceIndex];
             const autoStopDuration = Math.ceil(sentence.idealDuration * 1.1 * 1000); // 10% buffer, convert to ms
             
+            // Start countdown display
+            this.startRecordingCountdown(autoStopDuration);
+            
             this.autoStopTimer = setTimeout(() => {
                 if (this.isRecording) {
                     console.log(`Auto-stopping recording after ${autoStopDuration/1000}s (${sentence.idealDuration}s + 10% buffer)`);
                     this.stopRecording();
-                    this.showNotification(`Recording automatically stopped after ${(autoStopDuration/1000).toFixed(1)}s`, 'info');
+                    this.showNotification(`Recording automatically completed after ${(autoStopDuration/1000).toFixed(1)}s`, 'success');
                 }
             }, autoStopDuration);
             
@@ -1196,7 +1186,7 @@ class CEFRReadingTest {
                     <div class="practice-controls">
                         <div class="recording-section">
                             <button class="btn btn-primary" id="practiceRecordBtn">
-                                🎤 Start Recording
+                                🎤 Start Recording (10s)
                             </button>
                             <button class="btn btn-secondary" id="practicePlaybackBtn" style="display: none;">
                                 ▶️ Play Recording
@@ -1320,33 +1310,45 @@ class CEFRReadingTest {
         const recordBtn = document.getElementById('practiceRecordBtn');
         if (recordBtn) {
             recordBtn.addEventListener('click', async () => {
-                if (isRecording) {
-                    // Stop recording
+                if (!isRecording) {
+                    // Start recording with auto-stop
                     try {
-                        const audioBlob = await this.stopRecording();
-                        currentRecording = audioBlob;
+                        // Estimate practice duration (default 10 seconds for practice exercises)
+                        const practiceDuration = 10; // seconds
+                        recordBtn.textContent = `🎤 Recording... (${practiceDuration}s)`;
                         
-                        // Show playback button and analyze
-                        document.getElementById('practicePlaybackBtn').style.display = 'inline-block';
-                        this.analyzePracticeRecording(audioBlob, exercise);
-                        
-                        recordBtn.textContent = '🎤 Record Again';
-                        isRecording = false;
-                    } catch (error) {
-                        console.error('Error stopping recording:', error);
-                    }
-                } else {
-                    // Start recording
-                    try {
                         await this.startRecording();
-                        recordBtn.textContent = '⏹️ Stop Recording';
                         isRecording = true;
                         
                         // Clear previous feedback
                         document.getElementById('practiceFeedback').style.display = 'none';
+                        
+                        // Start countdown for practice
+                        this.startPracticeCountdown(recordBtn, practiceDuration);
+                        
+                        // Auto-stop after practice duration
+                        setTimeout(async () => {
+                            if (isRecording) {
+                                try {
+                                    const audioBlob = await this.stopRecording();
+                                    currentRecording = audioBlob;
+                                    
+                                    // Show playback button and analyze
+                                    document.getElementById('practicePlaybackBtn').style.display = 'inline-block';
+                                    this.analyzePracticeRecording(audioBlob, exercise);
+                                    
+                                    recordBtn.textContent = '🎤 Record Again';
+                                    isRecording = false;
+                                } catch (error) {
+                                    console.error('Error stopping recording:', error);
+                                }
+                            }
+                        }, practiceDuration * 1000);
+                        
                     } catch (error) {
                         console.error('Error starting recording:', error);
                         this.showNotification('Failed to start recording.', 'error');
+                        recordBtn.textContent = '🎤 Start Recording';
                     }
                 }
             });
@@ -1511,12 +1513,10 @@ class CEFRReadingTest {
 
     updateRecordingState(isRecording) {
         const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
         const sentenceDisplay = document.getElementById('sentenceDisplay');
         const recordingIndicator = document.getElementById('recordingIndicator');
 
         if (startBtn) startBtn.disabled = isRecording;
-        if (stopBtn) stopBtn.disabled = !isRecording;
         
         if (sentenceDisplay) {
             sentenceDisplay.classList.toggle('recording', isRecording);
@@ -1572,8 +1572,40 @@ class CEFRReadingTest {
         }
     }
 
+    startRecordingCountdown(totalDuration) {
+        const startBtn = document.getElementById('startBtn');
+        if (!startBtn) return;
 
+        let remainingTime = Math.ceil(totalDuration / 1000);
+        
+        // Update button text with countdown
+        const updateCountdown = () => {
+            if (remainingTime > 0 && this.isRecording) {
+                startBtn.innerHTML = `<span>🎤</span> Recording... (${remainingTime}s)`;
+                remainingTime--;
+                setTimeout(updateCountdown, 1000);
+            } else if (!this.isRecording) {
+                startBtn.innerHTML = `<span>🎤</span> Start Recording (Auto-Stop)`;
+            }
+        };
 
+        // Start the countdown
+        updateCountdown();
+    }
+
+    startPracticeCountdown(button, totalSeconds) {
+        let remainingTime = totalSeconds;
+        
+        const updateCountdown = () => {
+            if (remainingTime > 0 && this.isRecording) {
+                button.textContent = `🎤 Recording... (${remainingTime}s)`;
+                remainingTime--;
+                setTimeout(updateCountdown, 1000);
+            }
+        };
+
+        updateCountdown();
+    }
 
     showLoading(show) {
         const indicator = document.getElementById('loadingIndicator');
@@ -1609,10 +1641,7 @@ class CEFRReadingTest {
             case 'Space':
                 event.preventDefault();
                 console.log('Spacebar pressed for recording, isRecording:', this.isRecording);
-                if (this.isRecording) {
-                    console.log('Stopping recording via spacebar');
-                    this.stopRecording();
-                } else {
+                if (!this.isRecording) {
                     console.log('Starting recording via spacebar');
                     this.startRecording();
                 }
